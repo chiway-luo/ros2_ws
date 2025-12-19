@@ -1,0 +1,2 @@
+    channel_type = LaunchConfiguration('channel_type', default='serial')
+src/mycar/laser/sllidar_ros2/launch/sllidar_s2_launch.py
