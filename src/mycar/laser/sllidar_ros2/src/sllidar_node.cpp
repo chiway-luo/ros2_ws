@@ -144,6 +144,7 @@ class SLlidarNode : public rclcpp::Node
             RCLCPP_ERROR(this->get_logger(),"Error, cannot retrieve SLLidar health code: %x", op_result);
             return false;
         }
+        return false;//确保有返回值
     }
 
     bool stop_motor(const std::shared_ptr<std_srvs::srv::Empty::Request> req,

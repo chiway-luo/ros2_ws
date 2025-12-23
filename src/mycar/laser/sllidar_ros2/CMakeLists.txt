@@ -3,14 +3,18 @@
 ################################################################################
 cmake_minimum_required(VERSION 3.5)
 project(sllidar_ros2)
-
-if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 14)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  add_compile_options(-Wno-pedantic)
 endif()
 
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic)
-endif()
+
+# if(NOT CMAKE_CXX_STANDARD)
+#   set(CMAKE_CXX_STANDARD 14)
+# endif()
+
+# if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+#   add_compile_options(-Wall -Wextra -Wpedantic)
+# endif()
 
 if(MSVC)
   add_compile_definitions(
@@ -43,6 +47,17 @@ include_directories(
   ${Boost_INCLUDE_DIRS}
 )
 
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  add_compile_options(
+    -Wno-sign-compare
+    -Wno-unused-parameter
+    -Wno-cast-function-type
+    -Wno-type-limits
+    -Wno-address
+    -Wno-nonnull-compare
+    -Wno-parentheses
+  )
+endif()
 add_executable(sllidar_node	src/sllidar_node.cpp ${SLLIDAR_SDK_SRC})
 # target_link_libraries(sllidar_node ${ament_cmake_LIBRARIES})
 ament_target_dependencies(sllidar_node
@@ -51,12 +66,14 @@ ament_target_dependencies(sllidar_node
   sensor_msgs
 )
 
+
 add_executable(sllidar_client src/sllidar_client.cpp)
 ament_target_dependencies(sllidar_client
   rclcpp
   std_srvs
   sensor_msgs
 )
+
 ################################################################################
 # Install
 ################################################################################

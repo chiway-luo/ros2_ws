@@ -52,7 +52,12 @@ ament_target_dependencies(slam_gmapping
         sensor_msgs
         nav_msgs
         tf2_geometry_msgs
-        openslam_gmapping)
+        openslam_gmapping
+)
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")#解决c++标准库兼容性问题
+  target_compile_options(slam_gmapping PRIVATE -Wno-psabi)
+endif()
+
 
 install(TARGETS slam_gmapping
         DESTINATION lib/${PROJECT_NAME})
