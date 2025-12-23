@@ -1,0 +1,11 @@
+/**:
+    ros__parameters:
+      video_device: "/dev/mycamera"
+      framerate: 1.0
+      io_method: "mmap"
+      frame_id: "mycamera"
+      pixel_format: "yuyv"
+      image_width: 1280
+      image_height: 720
+      camera_name: "mycamera"
+      camera_info_url: "package://mycar_cam/params/camera_info.yaml"
