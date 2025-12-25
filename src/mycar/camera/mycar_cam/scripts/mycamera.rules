@@ -1,1 +1,1 @@
-KERNEL=="video[0,2,4,6,8]", ATTRS{idVendor}=="0c45", ATTRS{idProduct}=="6366", MODE:="0777", SYMLINK+="mycamera"
+KERNEL=="video[0,2,4,6,8]", ATTRS{idVendor}=="0c45", ATTRS{idProduct}=="6366", MODE:="0777", SYMLINK+="mycar_cam"
