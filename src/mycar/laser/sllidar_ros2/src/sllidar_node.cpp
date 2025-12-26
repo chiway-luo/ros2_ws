@@ -77,7 +77,7 @@ class SLlidarNode : public rclcpp::Node
         this->declare_parameter<bool>("inverted", false);
         this->declare_parameter<bool>("angle_compensate", false);
         this->declare_parameter<std::string>("scan_mode",std::string());
-        this->declare_parameter<float>("scan_frequency",10);
+        this->declare_parameter<double>("scan_frequency",10);
         
         this->get_parameter_or<std::string>("channel_type", channel_type, "serial");
         this->get_parameter_or<std::string>("tcp_ip", tcp_ip, "192.168.0.7"); 
@@ -91,9 +91,9 @@ class SLlidarNode : public rclcpp::Node
         this->get_parameter_or<bool>("angle_compensate", angle_compensate, false);
         this->get_parameter_or<std::string>("scan_mode", scan_mode, std::string());
         if(channel_type == "udp")
-            this->get_parameter_or<float>("scan_frequency", scan_frequency, 20.0);
+            this->get_parameter_or<double>("scan_frequency", scan_frequency, 20.0);
         else
-            this->get_parameter_or<float>("scan_frequency", scan_frequency, 10.0);
+            this->get_parameter_or<double>("scan_frequency", scan_frequency, 10.0);
     }
 
     bool getSLLIDARDeviceInfo(ILidarDriver * drv)
@@ -206,7 +206,8 @@ class SLlidarNode : public rclcpp::Node
         static int scan_count = 0;
         auto scan_msg = std::make_shared<sensor_msgs::msg::LaserScan>();
 
-        scan_msg->header.stamp = start;
+        // scan_msg->header.stamp = start;有时间延迟 修改源代码
+        scan_msg->header.stamp = this->now();
         scan_msg->header.frame_id = frame_id;
         scan_count++;
 
@@ -456,7 +457,7 @@ public:
     float max_distance = 8.0;
     size_t angle_compensate_multiple = 1;//it stand of angle compensate at per 1 degree
     std::string scan_mode;
-    float scan_frequency;
+    double scan_frequency;
 
     ILidarDriver * drv;    
 };
