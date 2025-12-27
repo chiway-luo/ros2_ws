@@ -17,10 +17,13 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time', default='false')
     map_dir = LaunchConfiguration(
         'map',
-        default=os.path.join(
-            '/home/ros2ur/ros2_ws',
-            'map',
-            'nav.yaml'))
+        default='null'
+        # os.path.join(
+        #     '/home/chiway/ros2_ws',
+        #     'map',
+        #     'nav.yaml'
+        # )
+    )
 
     param_file_name = MYCAR_MODEL + '.yaml'
     param_dir = LaunchConfiguration(

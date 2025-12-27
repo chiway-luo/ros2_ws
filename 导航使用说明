@@ -1,0 +1,4 @@
+三个终端 
+ros2 launch mycar_bringup mycar_bringup.launch.py 
+ros2 launch mycar_nav2 nav2.launch.py 
+ros2 launch mycar_slam_slam_toolbox online_async_launch.py

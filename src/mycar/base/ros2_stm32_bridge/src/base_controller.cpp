@@ -13,7 +13,8 @@ MiniDriver::MiniDriver() : Node("mini_driver"), parse_flag_(false), start_flag_(
   this->declare_parameter<std::string>("port_name", "/dev/ttyUSB0",desc);
   this->declare_parameter<int>("baud_rate", 115200,desc);
   this->declare_parameter<std::string>("odom_frame", "odom",desc);
-  this->declare_parameter<std::string>("base_frame", "base_link",desc);
+//   this->declare_parameter<std::string>("base_frame", "base_link",desc);
+  this->declare_parameter<std::string>("base_frame", "base_footprint",desc);
   this->declare_parameter<int>("control_rate", 10,desc);
   this->declare_parameter<double>("maximum_encoding", 100.0);
   this->declare_parameter<double>("encoder_resolution", 44.0,desc);
@@ -24,6 +25,11 @@ MiniDriver::MiniDriver() : Node("mini_driver"), parse_flag_(false), start_flag_(
   this->declare_parameter<int>("kp", 25);
   this->declare_parameter<int>("ki", 0);
   this->declare_parameter<int>("kd", 30);
+
+  //自定义参数
+  this->declare_parameter<double>("odom_rate", 10.0, desc);   // 例如默认 10Hz
+this->get_parameter("odom_rate", odom_rate_);
+last_odom_pub_time_ = this->get_clock()->now();
 
   this->get_parameter("port_name", port_name_);
   this->get_parameter("baud_rate", baud_rate_);
@@ -37,7 +43,7 @@ MiniDriver::MiniDriver() : Node("mini_driver"), parse_flag_(false), start_flag_(
   // this->get_parameter("model_param_acw", model_param_acw_);
   // this->get_parameter("wheel_diameter", wheel_diameter_);
   // pulse_per_cycle_ = reduction_ratio_ * encoder_resolution_ / (M_PI * wheel_diameter_ * pid_rate_);
-  pid_rate_ = 25.0; 
+  pid_rate_ = 25.0;
   last_twist_time_ = this->get_clock()->now();
 
   voltage_publisher_ = this->create_publisher<std_msgs::msg::UInt16>("voltage", 10);
@@ -53,6 +59,7 @@ MiniDriver::MiniDriver() : Node("mini_driver"), parse_flag_(false), start_flag_(
   tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
   Run();
 }
+
 
 MiniDriver::~MiniDriver() {
   mutex_.lock();
@@ -252,8 +259,20 @@ void MiniDriver::HandleEncodeMessage(short left_encode, short right_encode) {
     accumulation_y_ += (sin(accumulation_th_) * delta_x + cos(accumulation_th_) * delta_y);
     accumulation_th_ += delta_theta;
 
+    // ====== 发布限频：不影响里程积分，只限制发布 ======
+    double rate = std::max(1.0, odom_rate_);
+    double min_dt_pub = 1.0 / rate;
+
+    if ((now_ - last_odom_pub_time_).seconds() < min_dt_pub) {
+    last_time_ = now_;       // 这个保留，确保积分用的 delta_time 正常更新
+    return;                  // 本次不发布
+    }
+    last_odom_pub_time_ = now_;
+// ================================================
+
     geometry_msgs::msg::TransformStamped transform_stamped;
-    transform_stamped.header.stamp = this->get_clock()->now();
+    // transform_stamped.header.stamp = this->now();
+    transform_stamped.header.stamp = now_;
     transform_stamped.header.frame_id = odom_frame_;
     transform_stamped.child_frame_id = base_frame_;
     transform_stamped.transform.translation.x = accumulation_x_;
@@ -269,6 +288,7 @@ void MiniDriver::HandleEncodeMessage(short left_encode, short right_encode) {
 
     nav_msgs::msg::Odometry odom_msg;
     odom_msg.header.stamp = now_;
+    // odom_msg.header.stamp = this->now();
     odom_msg.header.frame_id = odom_frame_;
     odom_msg.child_frame_id = base_frame_;
     odom_msg.pose.pose.position.x = accumulation_x_;

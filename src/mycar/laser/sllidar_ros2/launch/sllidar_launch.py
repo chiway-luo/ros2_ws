@@ -67,5 +67,26 @@ def generate_launch_description():
                          'inverted': inverted, 
                          'angle_compensate': angle_compensate}],
             output='screen'),
+
+#         ros2 run laser_filters scan_to_scan_filter_chain \
+#   --ros-args --params-file ~/ros2_ws/pillar_mask.yaml \
+#   -r /scan:=/scan \
+#   -r /scan_filtered:=/scan_filtered
+        # Node(
+        #     package='laser_filters',
+        #     executable='scan_to_scan_filter_chain',
+        #     name='scan_to_scan_filter_chain',
+        #     parameters=[os.path.join(
+        #         get_package_share_directory('sllidar_ros2'),
+        #         'config',
+        #         'pillar_mask.yaml'
+        #     )],
+        #     # remappings=[
+        #     #     ('/scan', '/scan'),
+        #     #     ('/scan_filtered', '/scan_filtered')
+        #     # ],
+        #     output='screen'
+        # )
+
     ])
 

@@ -135,6 +135,49 @@ def generate_launch_description():
     if int(usb_cam) == 1:
         ld.add_action(camera_to_base_link)
 
+
+    #添加mycar_description的机器人描述文件 添加内容
+    mycar_description_launch = IncludeLaunchDescription(
+        launch_description_source=PythonLaunchDescriptionSource(
+            os.path.join(
+                get_package_share_directory('mycar_description'),'launch','mycar_desc.launch.py'
+            )
+        )
+    )
+    ld.add_action(mycar_description_launch)
+
+    #添加雷达稳定频率节点
+    # lidar_freq_node = Node(
+    #     package="laser_rate_control",
+    #     executable="sllidar_a1_control"
+    # )
+    # ld.add_action(lidar_freq_node)
+
+    # mycar_map = IncludeLaunchDescription(
+    #     launch_description_source=PythonLaunchDescriptionSource(
+    #         os.path.join(
+    #             get_package_share_directory('mycar_slam_gmapping'),'launch','gmapping.launch.py'
+    #         )
+    #     )
+    # )
+    # mycar_map = IncludeLaunchDescription(
+    #     launch_description_source=PythonLaunchDescriptionSource(
+    #         os.path.join(
+    #             get_package_share_directory('mycar_slam_slam_toolbox'),'launch','online_async_launch.py'
+    #         )
+    #     )
+    # )
+    # ld.add_action(mycar_map)
+
+    # mycar_nav = IncludeLaunchDescription(
+    #     launch_description_source=PythonLaunchDescriptionSource(
+    #         os.path.join(
+    #             get_package_share_directory('mycar_nav2'),'launch','nav2.launch.py'
+    #         )
+    #     )
+    # )
+    # ld.add_action(mycar_nav)
+
     return ld
 
 

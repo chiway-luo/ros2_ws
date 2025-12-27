@@ -44,6 +44,10 @@ class MiniDriver : public rclcpp::Node {
   void SendTimerCallback();
   void SpeedCommand(short left,short right);
 
+double odom_rate_{10.0};
+rclcpp::Time last_odom_pub_time_;
+
+
   std::string PrintHex(uint8_t* data, int length) {
     std::stringstream ss;
     for (int i = 0; i < length; i++) {
