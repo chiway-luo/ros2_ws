@@ -1,0 +1,9 @@
+当前进行多机器人增加命名空间的工作
+
+colcon build --packages-select mycar_bringup_multi
+
+ros2 launch mycar_bringup_multi mycar_bringup_multi.launch.py 
+
+复习:坐标系可视化工具
+启动 ros2 launch mycar_bringup_multi mycar_bringup_multi.launch.py 
+开启新终端 
