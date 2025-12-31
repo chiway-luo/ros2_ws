@@ -44,6 +44,10 @@ class MiniDriver : public rclcpp::Node {
   void SendTimerCallback();
   void SpeedCommand(short left,short right);
 
+
+
+  std::unique_ptr<rclcpp::Rate> control_rate_timer_;//10Hz
+
 double odom_rate_{10.0};
 rclcpp::Time last_odom_pub_time_;
 
@@ -65,6 +69,7 @@ rclcpp::Time last_odom_pub_time_;
 
   std::mutex mutex_;
   std::mutex twist_mutex_;
+  std::mutex serial_tx_mtx_;
 
   std::string port_name_;
   int baud_rate_;
@@ -77,6 +82,17 @@ rclcpp::Time last_odom_pub_time_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_publisher_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr twist_subscribe_;
   rclcpp::TimerBase::SharedPtr send_timer_;
+
+// === 新增：定时发布 TF/odom 的 timer ===
+  rclcpp::TimerBase::SharedPtr tf_timer_;
+
+  // === 新增：保存“最新状态”的互斥锁和变量 ===
+  std::mutex state_mtx_;
+  double last_x_{0.0}, last_y_{0.0}, last_yaw_{0.0};
+  double last_v_{0.0}, last_w_{0.0};
+// === 新增：定时器回调函数声明 ===
+void PublishTfOdomTimer();
+
   
 
   sensor_msgs::msg::Imu imu_msg_;

@@ -13,9 +13,8 @@ MiniDriver::MiniDriver() : Node("mini_driver"), parse_flag_(false), start_flag_(
   this->declare_parameter<std::string>("port_name", "/dev/ttyUSB0",desc);
   this->declare_parameter<int>("baud_rate", 115200,desc);
   this->declare_parameter<std::string>("odom_frame", "odom",desc);
-//   this->declare_parameter<std::string>("base_frame", "base_link",desc);
-  this->declare_parameter<std::string>("base_frame", "base_footprint",desc);
-  this->declare_parameter<int>("control_rate", 20,desc);
+  this->declare_parameter<std::string>("base_frame", "base_link",desc);
+  this->declare_parameter<int>("control_rate", 10,desc);
   this->declare_parameter<double>("maximum_encoding", 100.0);
   this->declare_parameter<double>("encoder_resolution", 44.0,desc);
   this->declare_parameter<double>("reduction_ratio", 90.0,desc);
@@ -26,16 +25,11 @@ MiniDriver::MiniDriver() : Node("mini_driver"), parse_flag_(false), start_flag_(
   this->declare_parameter<int>("ki", 0);
   this->declare_parameter<int>("kd", 30);
 
-  //自定义参数
-
-
-
   this->get_parameter("port_name", port_name_);
   this->get_parameter("baud_rate", baud_rate_);
   this->get_parameter("odom_frame", odom_frame_);
   this->get_parameter("base_frame", base_frame_);
   this->get_parameter("control_rate", control_rate_);
-  control_rate_timer_ = std::make_unique<rclcpp::Rate>(control_rate_);
   // this->get_parameter("maximum_encoding", maximum_encoding_);
   this->get_parameter("encoder_resolution", encoder_resolution_);
   this->get_parameter("reduction_ratio", reduction_ratio_);
@@ -43,7 +37,7 @@ MiniDriver::MiniDriver() : Node("mini_driver"), parse_flag_(false), start_flag_(
   // this->get_parameter("model_param_acw", model_param_acw_);
   // this->get_parameter("wheel_diameter", wheel_diameter_);
   // pulse_per_cycle_ = reduction_ratio_ * encoder_resolution_ / (M_PI * wheel_diameter_ * pid_rate_);
-  pid_rate_ = 25.0;
+  pid_rate_ = 25.0; 
   last_twist_time_ = this->get_clock()->now();
 
   voltage_publisher_ = this->create_publisher<std_msgs::msg::UInt16>("voltage", 10);
@@ -57,16 +51,8 @@ MiniDriver::MiniDriver() : Node("mini_driver"), parse_flag_(false), start_flag_(
   send_timer_ = this->create_wall_timer(std::chrono::milliseconds((int)(1000 / control_rate_)),
                                         std::bind(&MiniDriver::SendTimerCallback, this));
   tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
-
-  //定时器发布tf变换
-  tf_timer_ = this->create_wall_timer(
-    std::chrono::milliseconds(50),//1000 / 50 ms = 20Hz
-    std::bind(&MiniDriver::PublishTfOdomTimer, this)
-  );
-
   Run();
 }
-
 
 MiniDriver::~MiniDriver() {
   mutex_.lock();
@@ -80,45 +66,6 @@ MiniDriver::~MiniDriver() {
   io_service_.stop();
   io_service_.reset();
   mutex_.unlock();
-}
-
-void MiniDriver::PublishTfOdomTimer(){
-    double x,y,yaw,v,w;
-  {
-    std::lock_guard<std::mutex> lk(state_mtx_);
-    x = last_x_; y = last_y_; yaw = last_yaw_;
-    v = last_v_; w = last_w_;
-  }
-
-  auto stamp = this->get_clock()->now();
-
-  geometry_msgs::msg::TransformStamped tf;
-  tf.header.stamp = stamp;
-  tf.header.frame_id = odom_frame_;
-  tf.child_frame_id = base_frame_;
-  tf.transform.translation.x = x;
-  tf.transform.translation.y = y;
-  tf.transform.translation.z = 0.0;
-  tf2::Quaternion q; q.setRPY(0,0,yaw);
-  tf.transform.rotation.x = q.x();
-  tf.transform.rotation.y = q.y();
-  tf.transform.rotation.z = q.z();
-  tf.transform.rotation.w = q.w();
-  tf_broadcaster_->sendTransform(tf);
-
-  nav_msgs::msg::Odometry odom;
-  odom.header.stamp = stamp;
-  odom.header.frame_id = odom_frame_;
-  odom.child_frame_id = base_frame_;
-  odom.pose.pose.position.x = x;
-  odom.pose.pose.position.y = y;
-  odom.pose.pose.orientation.x = q.x();
-  odom.pose.pose.orientation.y = q.y();
-  odom.pose.pose.orientation.z = q.z();
-  odom.pose.pose.orientation.w = q.w();
-  odom.twist.twist.linear.x = v;
-  odom.twist.twist.angular.z = w;
-  odom_publisher_->publish(odom);
 }
 
 bool MiniDriver::Init() {
@@ -149,7 +96,6 @@ void MiniDriver::ParseMessage() {
   ParseStatus status = HEADER;
   parse_flag_ = true;
   while (rclcpp::ok() && parse_flag_) {
-    
     switch (status) {
       case HEADER:
         boost::asio::read(*port_.get(), boost::asio::buffer(&buffer_data[0], 1), ec_);
@@ -193,7 +139,6 @@ void MiniDriver::ParseMessage() {
           DistributeMessage(msg_type, payload);
         }
         status = HEADER;
-        // control_rate_timer_->sleep();
         break;
       default:
         break;
@@ -278,12 +223,7 @@ void MiniDriver::HandleEncodeMessage(short left_encode, short right_encode) {
   int delta_left = CalculateDelta(current_left_encode_, left_encode);
   int delta_right = CalculateDelta(current_right_encode_, right_encode);
   delta_time_ = (now_ - last_time_).seconds();
-
-  double min_dt = 1.0 / std::max(1, control_rate_);
-if (delta_time_ < min_dt) {
-  return;
-}
-//   if (delta_time_ >= 0.02) {
+  if (delta_time_ > 0.02) {
     double model_param;
     this->get_parameter("model_param_cw", model_param_cw_);
     this->get_parameter("model_param_acw", model_param_acw_);
@@ -312,17 +252,38 @@ if (delta_time_ < min_dt) {
     accumulation_y_ += (sin(accumulation_th_) * delta_x + cos(accumulation_th_) * delta_y);
     accumulation_th_ += delta_theta;
 
-//   }
+    geometry_msgs::msg::TransformStamped transform_stamped;
+    transform_stamped.header.stamp = this->get_clock()->now();
+    transform_stamped.header.frame_id = odom_frame_;
+    transform_stamped.child_frame_id = base_frame_;
+    transform_stamped.transform.translation.x = accumulation_x_;
+    transform_stamped.transform.translation.y = accumulation_y_;
+    transform_stamped.transform.translation.z = 0.0;
+    tf2::Quaternion q;
+    q.setRPY(0, 0, accumulation_th_);
+    transform_stamped.transform.rotation.x = q.x();
+    transform_stamped.transform.rotation.y = q.y();
+    transform_stamped.transform.rotation.z = q.z();
+    transform_stamped.transform.rotation.w = q.w();
+    tf_broadcaster_->sendTransform(transform_stamped);
 
-    {
-  std::lock_guard<std::mutex> lk(state_mtx_);
-  last_x_ = accumulation_x_;
-  last_y_ = accumulation_y_;
-  last_yaw_ = accumulation_th_;
-  last_v_ = v_dis;
-  last_w_ = v_theta;
-}
-
+    nav_msgs::msg::Odometry odom_msg;
+    odom_msg.header.stamp = now_;
+    odom_msg.header.frame_id = odom_frame_;
+    odom_msg.child_frame_id = base_frame_;
+    odom_msg.pose.pose.position.x = accumulation_x_;
+    odom_msg.pose.pose.position.y = accumulation_y_;
+    odom_msg.pose.pose.position.z = 0;
+    odom_msg.pose.pose.orientation.x = q.getX();
+    odom_msg.pose.pose.orientation.y = q.getY();
+    odom_msg.pose.pose.orientation.z = q.getZ();
+    odom_msg.pose.pose.orientation.w = q.getW();
+    odom_msg.twist.twist.linear.x = v_dis;
+    
+    odom_msg.twist.twist.linear.y = 0;
+    odom_msg.twist.twist.angular.z = v_theta;
+    odom_publisher_->publish(odom_msg);
+  }
   last_time_ = now_;
 }
 
@@ -330,190 +291,71 @@ void MiniDriver::TwistHandleCallback(const geometry_msgs::msg::Twist& msg) {
   twist_mutex_.lock();
   last_twist_time_ = this->get_clock()->now();
   current_twist_ = msg;
-//   Pid();
+  Pid();
   twist_mutex_.unlock();
 }
 
 void MiniDriver::SpeedCommand(short left,short right){
-//   uint8_t data[12] = {0xfc, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xdf};
-//   data[2] = data[6] = (left >> 8) & 0xff;
-//   data[3] = data[7] = left & 0xff;
-//   data[4] = data[8] = (right >> 8) & 0xff;
-//   data[5] = data[9] = right & 0xff;
-//   for (int i = 0; i < 10; i++) {
-//     data[10] ^= data[i];
-//   }
-//   boost::asio::write(*port_.get(), boost::asio::buffer(data, 12), ec_);
-
-std::lock_guard<std::mutex> lk(serial_tx_mtx_);
-
-  if (!port_ || !port_->is_open()) {
-    RCLCPP_ERROR(this->get_logger(), "SpeedCommand: serial not open");
-    return;
-  }
-
-  uint8_t data[12] = {0xfc, 0x06, 0,0, 0,0, 0,0, 0,0, 0, 0xdf};
-
-  // 你现在用的四轮重复格式（按你最新的帧）
-  data[2] = data[6] = (left  >> 8) & 0xff;
-  data[3] = data[7] =  left        & 0xff;
+  uint8_t data[12] = {0xfc, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xdf};
+  data[2] = data[6] = (left >> 8) & 0xff;
+  data[3] = data[7] = left & 0xff;
   data[4] = data[8] = (right >> 8) & 0xff;
-  data[5] = data[9] =  right       & 0xff;
-
-  uint8_t chk = 0;
-  for (int i = 0; i < 10; ++i) chk ^= data[i];
-  data[10] = chk;
-
-  boost::system::error_code ec;
-  size_t n = boost::asio::write(*port_, boost::asio::buffer(data, 12), ec);
-
-  if (ec || n != 12) {
-    // 这里才是真写失败（再也不会被读线程污染）
-    RCLCPP_ERROR(this->get_logger(),
-      "SERIAL WRITE FAIL: n=%zu ec=%d(%s)",
-      n, ec.value(), ec.message().c_str());
+  data[5] = data[9] = right & 0xff;
+  for (int i = 0; i < 10; i++) {
+    data[10] ^= data[i];
   }
+  boost::asio::write(*port_.get(), boost::asio::buffer(data, 12), ec_);
 }
 
 void MiniDriver::SendTimerCallback() {
+  double left_d, right_d, radio;
+  double model_param;
+  short left, right;
 
-// 0) 串口是否可用
-  if (!port_ || !port_->is_open()) {
-    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "serial not open");
-    return;
+  double linear_speed, angular_speed;
+  if ((this->get_clock()->now() - last_twist_time_).seconds() <= 1.0) {
+    linear_speed = current_twist_.linear.x;
+    angular_speed = current_twist_.angular.z;
+  } else {
+    linear_speed = 0;
+    angular_speed = 0;
+  }
+  if (angular_speed <= 0) {
+    model_param = model_param_cw_;
+  } else {
+    model_param = model_param_acw_;
   }
 
-  // 1) 线程安全读取 twist 与时间
-  geometry_msgs::msg::Twist twist;
-  rclcpp::Time last_time;
-  {
-    std::lock_guard<std::mutex> lk(twist_mutex_);
-    twist = current_twist_;
-    last_time = last_twist_time_;
-  }
+  left_d = (linear_speed - model_param / 2 * angular_speed) * pulse_per_cycle_;
+  right_d = (linear_speed + model_param / 2 * angular_speed) * pulse_per_cycle_;
 
-  double linear_speed = 0.0, angular_speed = 0.0;
-  if ((this->get_clock()->now() - last_time).seconds() <= 1.0) {
-    linear_speed = twist.linear.x;
-    angular_speed = twist.angular.z;
-  }
-
-  // 2) 每次确保关键参数已加载（别依赖“某处算过一次”）
-  this->get_parameter("model_param_cw", model_param_cw_);
-  this->get_parameter("model_param_acw", model_param_acw_);
-  this->get_parameter("wheel_diameter", wheel_diameter_);
-  this->get_parameter("encoder_resolution", encoder_resolution_);
-  this->get_parameter("reduction_ratio", reduction_ratio_);
   this->get_parameter("maximum_encoding", maximum_encoding_);
+  radio = std::max(std::max(std::abs(left_d), std::abs(right_d)) / maximum_encoding_, 1.0);
 
-  // 3) 重新计算 pulse_per_cycle_（防止未初始化/为0）
-  // 注意：你原来用 pid_rate_，这里仍按你的协议逻辑保留
-  pulse_per_cycle_ = reduction_ratio_ * encoder_resolution_ / (M_PI * wheel_diameter_ * pid_rate_);
+  left = static_cast<short>(left_d / radio);
+  right = static_cast<short>(right_d / radio);
 
-  if (pulse_per_cycle_ <= 1e-9) {
-    RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
-                         "pulse_per_cycle_ invalid: %.12f", pulse_per_cycle_);
-    return;
-  }
-
-  double model_param = (angular_speed <= 0) ? model_param_cw_ : model_param_acw_;
-
-  double left_d  = (linear_speed - model_param / 2.0 * angular_speed) * pulse_per_cycle_;
-  double right_d = (linear_speed + model_param / 2.0 * angular_speed) * pulse_per_cycle_;
-
-  double radio = std::max(std::max(std::abs(left_d), std::abs(right_d)) / maximum_encoding_, 1.0);
-
-  short left  = static_cast<short>(left_d / radio);
-  short right = static_cast<short>(right_d / radio);
-
-  //调试信息
-//   RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 500,
-//     "v=%.3f w=%.3f pulse=%.3f mp=%.3f left_d=%.2f right_d=%.2f -> L=%d R=%d",
-//     linear_speed, angular_speed, pulse_per_cycle_, model_param, left_d, right_d, (int)left, (int)right
-//   );
-
-  SpeedCommand(left, right);
-// SpeedCommand(80, 80);
-// return;
-
-//   double left_d, right_d, radio;
-//   double model_param;
-//   short left, right;
-
-//   double linear_speed, angular_speed;
-//   if ((this->get_clock()->now() - last_twist_time_).seconds() <= 1.0) {
-//     linear_speed = current_twist_.linear.x;
-//     angular_speed = current_twist_.angular.z;
-//   } else {
-//     linear_speed = 0;
-//     angular_speed = 0;
-//   }
-//   if (angular_speed <= 0) {
-//     model_param = model_param_cw_;
-//   } else {
-//     model_param = model_param_acw_;
-//   }
-
-//   left_d = (linear_speed - model_param / 2 * angular_speed) * pulse_per_cycle_;
-//   right_d = (linear_speed + model_param / 2 * angular_speed) * pulse_per_cycle_;
-
-//   this->get_parameter("maximum_encoding", maximum_encoding_);
-//   radio = std::max(std::max(std::abs(left_d), std::abs(right_d)) / maximum_encoding_, 1.0);
-
-//   left = static_cast<short>(left_d / radio);
-//   right = static_cast<short>(right_d / radio);
-
-//   SpeedCommand(left,right);
+  SpeedCommand(left,right);
   
 }
 
 void MiniDriver::Pid(){
-//   int64_t kp,ki,kd;
-//   this->get_parameter("kp",kp);
-//   this->get_parameter("ki",ki); 
-//   this->get_parameter("kd",kd); 
-//   uint8_t data[12] = {0xfc, 0x07, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xdf};
-//   data[2] = (kp >> 8) & 0xff;
-//   data[3] = kp & 0xff;
-//   data[4] = (ki >> 8) & 0xff;
-//   data[5] = ki & 0xff;
-//   data[6] = (kd >> 8) & 0xff;
-//   data[7] = kd & 0xff;
-//   for (int i = 0; i < 10; i++) {
-//     data[10] ^= data[i];
-//   }
-
-//   boost::asio::write(*port_.get(), boost::asio::buffer(data, 12), ec_);
-
- std::lock_guard<std::mutex> lk(serial_tx_mtx_);
-
-  if (!port_ || !port_->is_open()) {
-    RCLCPP_ERROR(this->get_logger(), "Pid: serial not open");
-    return;
+  int64_t kp,ki,kd;
+  this->get_parameter("kp",kp);
+  this->get_parameter("ki",ki); 
+  this->get_parameter("kd",kd); 
+  uint8_t data[12] = {0xfc, 0x07, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xdf};
+  data[2] = (kp >> 8) & 0xff;
+  data[3] = kp & 0xff;
+  data[4] = (ki >> 8) & 0xff;
+  data[5] = ki & 0xff;
+  data[6] = (kd >> 8) & 0xff;
+  data[7] = kd & 0xff;
+  for (int i = 0; i < 10; i++) {
+    data[10] ^= data[i];
   }
 
-  int64_t kp, ki, kd;
-  this->get_parameter("kp", kp);
-  this->get_parameter("ki", ki);
-  this->get_parameter("kd", kd);
-
-  uint8_t data[12] = {0xfc, 0x07, 0,0, 0,0, 0,0, 0,0, 0, 0xdf};
-  data[2] = (kp >> 8) & 0xff; data[3] = kp & 0xff;
-  data[4] = (ki >> 8) & 0xff; data[5] = ki & 0xff;
-  data[6] = (kd >> 8) & 0xff; data[7] = kd & 0xff;
-
-  uint8_t chk = 0;
-  for (int i = 0; i < 10; ++i) chk ^= data[i];
-  data[10] = chk;
-
-  boost::system::error_code ec;
-  size_t n = boost::asio::write(*port_, boost::asio::buffer(data, 12), ec);
-
-  if (ec || n != 12) {
-    RCLCPP_ERROR(this->get_logger(),
-      "SERIAL PID WRITE FAIL: n=%zu ec=%d(%s)",
-      n, ec.value(), ec.message().c_str());
-  }
+  boost::asio::write(*port_.get(), boost::asio::buffer(data, 12), ec_);
 }
 void MiniDriver::Run() {
   if (Init()) {
