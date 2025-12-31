@@ -58,13 +58,25 @@ class SLlidarNode : public rclcpp::Node
     SLlidarNode()
     : Node("sllidar_node")
     {
-
     //   scan_pub = this->create_publisher<sensor_msgs::msg::LaserScan>("scan_info", rclcpp::QoS(rclcpp::KeepLast(10)));
       scan_pub = this->create_publisher<sensor_msgs::msg::LaserScan>("scan", rclcpp::QoS(rclcpp::KeepLast(10)));
+
+      //设置补偿时间,
+      //ros2 topic echo /mycar_lkw_4w_1/scan
+      //ros2 topic echo /tf
+      //相差的时间,导致rviz2报错
+      time_offset = std::make_shared<rclcpp::Duration>(std::chrono::milliseconds(0));
+      double temp_time_offset;
+      this->declare_parameter<double>("time_offset",0);//默认补偿0秒
+      this->get_parameter<double>("time_offset", temp_time_offset);
+      *time_offset = rclcpp::Duration::from_seconds(temp_time_offset);//转换成秒
+      
       
     }
 
-  private:    
+  private:
+    std::shared_ptr<rclcpp::Duration> time_offset;
+
     void init_param()
     {
         this->declare_parameter<std::string>("channel_type","serial");
@@ -207,8 +219,8 @@ class SLlidarNode : public rclcpp::Node
         static int scan_count = 0;
         auto scan_msg = std::make_shared<sensor_msgs::msg::LaserScan>();
 
-        scan_msg->header.stamp = start;
-        // scan_msg->header.stamp = this->now();//这是修改后的
+        // scan_msg->header.stamp = start;
+        scan_msg->header.stamp = SLlidarNode::now() + *SLlidarNode::time_offset;//这是修改后的
         scan_msg->header.frame_id = frame_id;
         scan_count++;
 
