@@ -2,7 +2,7 @@
   ros__parameters:
     base_frame: base_footprint
     baud_rate: 115200
-    control_rate: 10 # (int)(1000 / control_rate_)建议使用10的倍数
+    control_rate: 50 # (int)(1000 / control_rate_)建议使用10的倍数,最好为50
     encoder_resolution: 44.0
     kd: 130
     ki: 0
