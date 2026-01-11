@@ -4,7 +4,10 @@ import cv2
 #####################使用python3启动,不是ros2节点#################
 #################################################################   python3 src/mycar/camera/mycar_cam/src/show_cam.py 
 
-dev = "/dev/video0"   # 也可以换成 /dev/v4l/by-id/xxx
+# dev = "/dev/video0"   # 也可以换成 /dev/v4l/by-id/xxx
+# dev = "/dev/mycamera_front"
+dev = "/dev/depth_camera"
+
 cap = cv2.VideoCapture(dev, cv2.CAP_V4L2)
 
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
