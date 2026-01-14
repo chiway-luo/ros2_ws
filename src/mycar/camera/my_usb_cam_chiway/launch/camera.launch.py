@@ -50,7 +50,7 @@ CAMERAS = []
 CAMERAS.append(
     CameraConfig(
         name='camera1',
-        param_path=Path(USB_CAM_DIR, 'config', 'params_1.yaml')
+        param_path=Path(USB_CAM_DIR, 'params', 'params_1.yaml')
     )
     # Add more Camera's here and they will automatically be launched below
 )

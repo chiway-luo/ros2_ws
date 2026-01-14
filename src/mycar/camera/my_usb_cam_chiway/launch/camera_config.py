@@ -33,14 +33,14 @@ from typing import List, Optional
 from ament_index_python.packages import get_package_share_directory
 from pydantic import BaseModel, root_validator, validator
 
-USB_CAM_DIR = get_package_share_directory('usb_cam')
+USB_CAM_DIR = get_package_share_directory('my_usb_cam_chiway')
 
-
+#存储相机配置信息的对象
 class CameraConfig(BaseModel):
-    name: str = 'camera1'
-    param_path: Path = Path(USB_CAM_DIR, 'config', 'params_1.yaml')
-    remappings: Optional[List]
-    namespace: Optional[str]
+    name: str = 'camera1' #相机名称
+    param_path: Path = Path(USB_CAM_DIR, 'params', 'params_1.yaml') #参数文件路径
+    remappings: Optional[List] = None#话题重映射
+    namespace: Optional[str] = None#命名空间
 
     @validator('param_path')
     def validate_param_path(cls, value):
@@ -48,7 +48,7 @@ class CameraConfig(BaseModel):
             raise FileNotFoundError(f'Could not find parameter file: {value}')
         return value
 
-    @root_validator
+    @root_validator(skip_on_failure=True)
     def validate_root(cls, values):
         name = values.get('name')
         remappings = values.get('remappings')
