@@ -1,0 +1,4 @@
+chiway@chiway-FCCID-2ABCB-RPI4B:~/ros2_capa$ lsusb | egrep -i "2bc5|6366|0c45|orbbec"
+Bus 001 Device 015: ID 0c45:6341 Microdia Defender G-Lens 2577 HD720p Camera
+Bus 001 Device 018: ID 2bc5:050f Orbbec 3D Technology International, Inc USB 2.0 Camera
+Bus 001 Device 017: ID 2bc5:060f Orbbec 3D Technology International, Inc ORBBEC Depth Sensor
