@@ -1,0 +1,6 @@
+/build/
+/install/
+/log/
+/.vscode/
+browse.vc.db
+browse.vc.db-shm

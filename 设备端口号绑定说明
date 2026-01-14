@@ -1,0 +1,71 @@
+====================================================================================
+摄像头
+插入摄像头的时候,摄像头会暴露多个端口号,但是能获取视频流的端口号只有一个
+，可以通过以下命令查看各个设备节点的能力：
+v4l2-ctl -d /dev/video0 --all | grep -i "Device Caps"           //查看设备能力
+
+用 by-path(也就是 ID_PATH)+ index==0 来给主采集节点绑一个你自己的别名
+
+//Device Caps      : 0x04200001
+
+最低位 0x1 通常代表 V4L2_CAP_VIDEO_CAPTURE(普通视频采集能力)。
+video0 有这个位，所以能枚举格式、能开流；
+video2 没这个位，所以 --list-formats-ext 枚举不到任何格式——这就是你看到“Type: Video Capture 但没有 formats”的根因之一（节点类型是捕获类，但设备能力不提供标准采集格式）。
+
+重定义规则
+udevadm info -q property -n /dev/video0 | grep -E 'ID_PATH=|ID_SERIAL=|ID_VENDOR_ID=|ID_MODEL_ID='          
+                                                                #查看设备信息,其中的ID_PATH是设备的物理路径
+                                                                #ID_PATH=platform-fd500000.pcie-pci-0000:01:00.0-usb-0:1.1:1.0
+ls -l /dev/v4l/by-id/                                           #查看当前的设备节点
+ls -l /dev/v4l/by-path/                                         #查看当前的设备节点    
+sudo nano /etc/udev/rules.d/mycamera.rules                      #将下列内容写入该文件,index==0代表主采集节点,根据实际情况修改ID_PATH的值
+SUBSYSTEM=="video4linux", KERNEL=="video*", ENV{ID_PATH}=="platform-fd500000.pcie-pci-0000:01:00.0-usb-0:1.1:1.0", ATTR{index}=="0", SYMLINK+="mycamera_front", GROUP="video", MODE="0660"
+
+sudo udevadm control --reload-rules                             #重新加载规则
+sudo udevadm trigger --subsystem-match=video4linux              #触发规则
+
+#sudo service udev reload 可选重新加载规则方法(重新启动udev服务) 优点:简单粗暴,更好记忆
+#sudo service udev restart
+
+ls -l /dev/mycamera_front                                       #查看映射是否生效
+
+#可选添加深度相机
+ID_PATH=platform-fd500000.pcie-pci-0000:01:00.0-usb-0:1.3.2:1.0
+index==0代表主采集节点
+SUBSYSTEM=="video4linux", KERNEL=="video*", ENV{ID_PATH}=="platform-fd500000.pcie-pci-0000:01:00.0-usb-0:1.3.2:1.0", ATTR{index}=="0", SYMLINK+="depth_camera", GROUP="video", MODE="0660"
+=====================================================================================
+=====================================================================================
+根据usb设备绑定端口(设置别名)
+1-查看设备信息
+lsusb
+
+//输出: ID: 供应商编码:产品编码
+Bus 001 Device 005: ID 10c4:ea60 Silicon Labs CP210x UART Bridge
+Bus 001 Device 004: ID 1a86:7523 QinHeng Electronics CH340 serial converter
+
+2-编写规则
+---底盘设备端口绑定
+sudo nano /etc/udev/rules.d/mycar.rules
+//将下列内容写入该文件,根据实际情况修改 供应商编码:产品编码 以及 KERNELS 的值
+KERNEL=="ttyUSB*", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", MODE:="0777", SYMLINK+="mycar"
+---激光雷达设备端口绑定
+sudo nano /etc/udev/rules.d/rplidar.rules
+KERNEL=="ttyUSB*", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", MODE:="0777", SYMLINK+="rplidar" #按 USB 设备“身份”(VID/PID) 匹配 --更通用
+3-可选规则优化
+udevadm info --query=property --name=/dev/ttyUSB0 #查看设备属性,根据实际情况修改
+#ID_PATH=platform-fd500000.pcie-pci-0000:01:00.0-usb-0:1.4:1.0
+#ID_MM_DEVICE_IGNORE=1
+#SUBSYSTEM=tty
+udevadm info -a -n /dev/ttyUSB0 #查看设备属性树,根据实际情况修改
+#KERNEL=="ttyUSB0"
+#SUBSYSTEM=="tty"
+#DRIVERS=="cp210x"
+udevadm info -q path -n /dev/ttyUSB0
+#/devices/platform/scb/fd500000.pcie/pci0000:00/0000:00:00.0/0000:01:00.0/usb1/1-1/1-1.4/1-1.4:1.0/ttyUSB0/tty/ttyUSB0 其中的 1-1.4 就是插口路径
+SUBSYSTEM=="tty", KERNEL=="ttyUSB*", KERNELS=="1-1.4*", DRIVERS=="cp210x",ENV{ID_MM_DEVICE_IGNORE}="1", SYMLINK+="rplidar", MODE="0666", GROUP="dialout" #按“插口路径 + 驱动”绑定 —— 更精确
+4-重新加载规则
+#sudo udevadm control --reload-rules
+#sudo udevadm trigger --subsystem-match=tty
+sudo service udev reload #可选重新加载规则方法(重新启动udev服务) 优点:简单粗暴,更好记忆
+sudo service udev restart
+=====================================================================================
