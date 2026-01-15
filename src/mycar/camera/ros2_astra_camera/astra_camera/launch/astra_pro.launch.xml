@@ -50,7 +50,7 @@
     
     <arg name="uvc_vendor_id" default="0x2bc5"/>
 
-    <arg name="uvc_product_id" default="0x050f"/>
+    <arg name="uvc_product_id" default="0x0501"/>
     
     <arg name="uvc_retry_count" default="100"/>
     <arg name="uvc_camera_format" default="mjpeg"/>
