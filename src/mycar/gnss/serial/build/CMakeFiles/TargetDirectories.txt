@@ -1,0 +1,10 @@
+/home/chiway/ros2_capa/src/mycar/gnss/serial/build/CMakeFiles/uninstall.dir
+/home/chiway/ros2_capa/src/mycar/gnss/serial/build/CMakeFiles/serial_uninstall.dir
+/home/chiway/ros2_capa/src/mycar/gnss/serial/build/CMakeFiles/serial.dir
+/home/chiway/ros2_capa/src/mycar/gnss/serial/build/CMakeFiles/test.dir
+/home/chiway/ros2_capa/src/mycar/gnss/serial/build/CMakeFiles/edit_cache.dir
+/home/chiway/ros2_capa/src/mycar/gnss/serial/build/CMakeFiles/rebuild_cache.dir
+/home/chiway/ros2_capa/src/mycar/gnss/serial/build/CMakeFiles/list_install_components.dir
+/home/chiway/ros2_capa/src/mycar/gnss/serial/build/CMakeFiles/install.dir
+/home/chiway/ros2_capa/src/mycar/gnss/serial/build/CMakeFiles/install/local.dir
+/home/chiway/ros2_capa/src/mycar/gnss/serial/build/CMakeFiles/install/strip.dir
