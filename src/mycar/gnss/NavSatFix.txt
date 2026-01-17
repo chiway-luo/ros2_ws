@@ -1,0 +1,56 @@
+# 用于任何全球导航卫星系统的导航卫星定位
+#
+# 使用 WGS 84 参考椭球体指定
+
+# header.stamp 指定此测量的 ROS 时间（对应的卫星时间可使用
+#        sensor_msgs/TimeReference 消息报告）。
+#
+# header.frame_id 是卫星接收机报告的参考坐标系，
+#        通常为天线的位置。 这是相对于车辆的欧几里得坐标系，
+#        不是参考椭球体坐标系。
+std_msgs/Header header
+    builtin_interfaces/Time stamp
+        int32 sec
+        uint32 nanosec
+    string frame_id 接收器位置
+
+# 卫星定位状态信息。
+NavSatStatus status
+    #
+    int8 STATUS_NO_FIX =  -1        #
+    int8 STATUS_FIX =      0        #
+    int8 STATUS_SBAS_FIX = 1        #
+    int8 STATUS_GBAS_FIX = 2        #
+    int8 status
+    uint16 SERVICE_GPS =     1
+    uint16 SERVICE_GLONASS = 2
+    uint16 SERVICE_COMPASS = 4      #
+    uint16 SERVICE_GALILEO = 8
+    uint16 service
+
+# 纬度 [度]。正值为赤道以北；负值为赤道以南。
+float64 latitude
+
+# 经度 [度]。正值为本初子午线以东；负值为本初子午线以西。
+float64 longitude
+
+# 高度 [米]。相对于 WGS 84 椭球体的高度为正
+# （如果没有高度则为静默 NaN）。
+float64 altitude
+
+# 位置协方差 [m^2]，相对于通过报告位置的切平面定义。
+# 分量为东、北、上（ENU），按行优先顺序。
+#
+# 注意：该坐标系在极点处存在奇异性。
+float64[9] position_covariance
+
+# 如果已知定位的协方差，则完整填写。如果 GPS 接收机提供每个测量的方差，
+# 将它们放在对角线上。如果只有精度稀释（Dilution of Precision），
+# 可从中估算近似协方差。
+
+uint8 COVARIANCE_TYPE_UNKNOWN = 0
+uint8 COVARIANCE_TYPE_APPROXIMATED = 1
+uint8 COVARIANCE_TYPE_DIAGONAL_KNOWN = 2
+uint8 COVARIANCE_TYPE_KNOWN = 3
+
+uint8 position_covariance_type

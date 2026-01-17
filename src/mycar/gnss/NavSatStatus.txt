@@ -1,0 +1,20 @@
+# 任何全球导航卫星系统的导航卫星定位修复状态。
+#
+# 是否输出增强后的定位取决于定位类型和上次差分修正接收时间。
+# 当 status >= STATUS_FIX 时，定位有效。
+
+int8 STATUS_NO_FIX =  -1        # 无法确定位置 没有接收到信号
+int8 STATUS_FIX =      0        # 未增强的定位 已经接收到信号
+int8 STATUS_SBAS_FIX = 1        # 使用卫星基增强（SBAS）的定位 接收到增强信号
+int8 STATUS_GBAS_FIX = 2        # 使用地基增强（GBAS）的定位 接收到增强信号
+
+int8 status                   # 定位状态，取上述 STATUS_* 值之一
+
+# 定义接收机使用的哪些全球导航卫星系统信号的位掩码。
+
+uint16 SERVICE_GPS =     1     # GPS
+uint16 SERVICE_GLONASS = 2     # GLONASS
+uint16 SERVICE_COMPASS = 4     # Compass（包括北斗）
+uint16 SERVICE_GALILEO = 8     # Galileo
+
+uint16 service                # 使用的服务位掩码，组合上述 SERVICE_* 值
