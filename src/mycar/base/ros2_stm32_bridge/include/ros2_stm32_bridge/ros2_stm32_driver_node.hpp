@@ -93,6 +93,9 @@ rclcpp::Time last_odom_pub_time_;
 // === 新增：定时器回调函数声明 ===
 void PublishTfOdomTimer();
 
+//新增融合里程计和imu相关参数
+bool publish_tf_;
+
   
 
   sensor_msgs::msg::Imu imu_msg_;

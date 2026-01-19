@@ -26,6 +26,10 @@ MiniDriver::MiniDriver() : Node("mini_driver"), parse_flag_(false), start_flag_(
   this->declare_parameter<int>("ki", 0);
   this->declare_parameter<int>("kd", 30);
 
+  //融合实现相关参数
+  this->declare_parameter<bool>("publish_tf", true,desc);//融合是false
+  this->get_parameter("publish_tf", publish_tf_);
+
   //自定义参数
 
 
@@ -36,13 +40,14 @@ MiniDriver::MiniDriver() : Node("mini_driver"), parse_flag_(false), start_flag_(
   this->get_parameter("base_frame", base_frame_);
   this->get_parameter("control_rate", control_rate_);
   control_rate_timer_ = std::make_unique<rclcpp::Rate>(control_rate_);
-  // this->get_parameter("maximum_encoding", maximum_encoding_);
+//   this->get_parameter("maximum_encoding", maximum_encoding_);
   this->get_parameter("encoder_resolution", encoder_resolution_);
   this->get_parameter("reduction_ratio", reduction_ratio_);
-  // this->get_parameter("model_param_cw", model_param_cw_);
-  // this->get_parameter("model_param_acw", model_param_acw_);
-  // this->get_parameter("wheel_diameter", wheel_diameter_);
-  // pulse_per_cycle_ = reduction_ratio_ * encoder_resolution_ / (M_PI * wheel_diameter_ * pid_rate_);
+//   this->get_parameter("model_param_cw", model_param_cw_);
+//   this->get_parameter("model_param_acw", model_param_acw_);
+//   this->get_parameter("wheel_diameter", wheel_diameter_);
+
+  pulse_per_cycle_ = reduction_ratio_ * encoder_resolution_ / (M_PI * wheel_diameter_ * pid_rate_);
   pid_rate_ = 25.0;
   last_twist_time_ = this->get_clock()->now();
 
@@ -92,19 +97,24 @@ void MiniDriver::PublishTfOdomTimer(){
 
   auto stamp = this->get_clock()->now();
 
-  geometry_msgs::msg::TransformStamped tf;
-  tf.header.stamp = stamp;
-  tf.header.frame_id = odom_frame_;
-  tf.child_frame_id = base_frame_;
-  tf.transform.translation.x = x;
-  tf.transform.translation.y = y;
-  tf.transform.translation.z = 0.0;
   tf2::Quaternion q; q.setRPY(0,0,yaw);
-  tf.transform.rotation.x = q.x();
-  tf.transform.rotation.y = q.y();
-  tf.transform.rotation.z = q.z();
-  tf.transform.rotation.w = q.w();
-  tf_broadcaster_->sendTransform(tf);
+ 
+  //如果publish_tf参数为true，则发布tf变换
+  //当使用robot_localization 实现里程计融合时,rl会发布tf变换,此时这里不需要发布tf变换
+  if (this->publish_tf_){
+    geometry_msgs::msg::TransformStamped tf;
+    tf.header.stamp = stamp;
+    tf.header.frame_id = odom_frame_;
+    tf.child_frame_id = base_frame_;
+    tf.transform.translation.x = x;
+    tf.transform.translation.y = y;
+    tf.transform.translation.z = 0.0;
+    tf.transform.rotation.x = q.x();
+    tf.transform.rotation.y = q.y();
+    tf.transform.rotation.z = q.z();
+    tf.transform.rotation.w = q.w();
+    tf_broadcaster_->sendTransform(tf);
+  }
 
   nav_msgs::msg::Odometry odom;
   odom.header.stamp = stamp;
