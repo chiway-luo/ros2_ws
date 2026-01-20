@@ -48,7 +48,7 @@ filterN.params
 已复制到当前工作空间 src/mycar/laser/laser融合launch文件预览
 中已经给出了若干示例，以多过滤器使用为例，其对应的launch文件
 
-[multiple_filters_example.launch.py](/src/mycar/laser/laser融合launch文件预览/multiple_filters_example.launch.py)
+[multiple_filters_example.launch.py](/src/mycar/laser/laser_filters_examples/multiple_filters_example.launch.py)
 
 内容如下：
 ```
@@ -73,7 +73,7 @@ def generate_launch_description():
 ```
 该文件中执行了功能包laser_filters下的scan_to_scan_filter_chain节点，并加载了用于配置过滤器的yaml文件。
 
-该launch文件对应的配置文件[multiple_filters_example.yaml](/src/mycar/laser/laser融合launch文件预览/multiple_filters_example.yaml)内容如下：
+该launch文件对应的配置文件[multiple_filters_example.yaml](/src/mycar/laser/laser_filters_examples/multiple_filters_example.yaml)内容如下：
 ```
 scan_to_scan_filter_chain:
   ros__parameters:
