@@ -23,6 +23,7 @@
   ```
   python test.py
   ``` -->
+- ros2 launch mycar_bringup mycar_bringup_update.launch.py 
 
 
 ## Directory Hierarchy
