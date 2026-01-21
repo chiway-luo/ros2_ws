@@ -1,0 +1,11 @@
+scan_to_scan_filter_chain:
+  ros__parameters:
+    filter1:
+      name: range_filter
+      type: laser_filters/LaserScanRangeFilter
+      params:
+        use_message_range_limits: false   # 是否启用雷达消息本身的有效范围 默认不启用
+        lower_threshold: 0.2              # 最小距离
+        upper_threshold: 4.0              # 最大距离
+        lower_replacement_value: -.inf    # 小于 lower_threshold 时的替代值 无穷小
+        upper_replacement_value: .inf     # if not specified defaults to NaN
