@@ -39,18 +39,28 @@ import sys
 dir_path = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(dir_path)
 
+#cameraconfig 用来存储相机的一系列启动参数:命名空间,端口号,标定参数...
 from camera_config import CameraConfig, USB_CAM_DIR  # noqa: E402
 
 from launch import LaunchDescription  # noqa: E402
 from launch.actions import GroupAction  # noqa: E402
 from launch_ros.actions import Node  # noqa: E402
 
-
+#列表 存储多个相机的配置参数
 CAMERAS = []
 CAMERAS.append(
     CameraConfig(
-        name='camera1',
-        param_path=Path(USB_CAM_DIR, 'params', 'params_1.yaml')
+        name='camera1',#节点名称 + 命名空间
+        # namespace='syd1',#命名空间
+        param_path=Path(USB_CAM_DIR, 'params', 'params_1.yaml') #标定参数
+    )
+    # Add more Camera's here and they will automatically be launched below
+)
+CAMERAS.append(
+    CameraConfig(
+        name='camera4',#节点名称
+        # namespace='syd2',#命名空间
+        param_path=Path(USB_CAM_DIR, 'params', 'params_2.yaml') #标定参数
     )
     # Add more Camera's here and they will automatically be launched below
 )
