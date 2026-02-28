@@ -8,6 +8,10 @@
         1.创建头文件,实现串口通信的相关功能
         2.当前源文件,调用头文件,关注的是ros2相关业务逻辑
         这样设计的优点,提高内聚性,降低耦合性,方便后期的维护和拓展
+    阶段二: 编写并测试头文件功能
+        1.打开以及关闭串口
+        2.读实现
+        3.写实现
    
 */
 
@@ -20,7 +24,7 @@ public:
         RCLCPP_INFO(this->get_logger(),"namesapce:  node: %s 节点创建成功",str1.c_str());
 
         //实例化串口通信对象
-        serial_port_ = std::make_shared<my_serial::SerialPortComm>();
+        serial_port_ = std::make_shared<my_serial::SerialPortComm>("/dev/mycar",115200,8);
 
     }
 
