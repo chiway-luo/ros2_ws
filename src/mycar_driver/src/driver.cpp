@@ -46,6 +46,7 @@ public:
         this->declare_parameter<double>("cmd_vel_timer_frequency",10.0);
         this->declare_parameter<double>("reduction_ratio",90.0);
         this->declare_parameter<int>("encoder_resolution",0);//44
+        this->declare_parameter<int>("max_velocity",1);//电机速度的最值,单位为 编码器计数/pid周期
         //获取参数值
         this->get_parameter("port", port_);
         this->get_parameter("baud_rate", baud_rate_);
@@ -61,7 +62,7 @@ public:
         this->get_parameter("cmd_vel_timer_frequency", cmd_control_rate_);//定时器频率
         this->get_parameter("reduction_ratio", reduction_ratio_);
         this->get_parameter("encoder_resolution", encoder_resolution_);
-        // this->
+        this->get_parameter("max_velocity", max_velocity_);
         //实例化串口通信对象
         // serial_port_ = std::make_shared<my_serial::SerialPortComm>("/dev/mycar",115200,8);
         serial_port_ = std::make_shared<my_serial::SerialPortComm>(port_, baud_rate_, data_bits_);
@@ -105,6 +106,7 @@ private:
     double cmd_vel_timeout_;//速度指令超时时间
     double reduction_ratio_;//减速比
     int encoder_resolution_;//编码器分辨率
+    int max_velocity_;//电机速度的最值,单位为转/s
 
     std::shared_ptr<rclcpp::Subscription<geometry_msgs::msg::Twist>> cmd_vel_sub_;//速度指令订阅者
     void cmdVelCallback(const geometry_msgs::msg::Twist::SharedPtr msg);//速度指令消息处理
@@ -215,6 +217,19 @@ void MyCarDriver::cmdVelTimerCallback(){
     //将编码器计数/s 转换成 编码器计数/pid周期 (40ms 25hz)
     left_wheel_rand = left_wheel_rand / pid_rate;//单位为编码器计数/pid周期
     right_wheel_rand = right_wheel_rand / pid_rate;//单位为编码器计数/pid周期
+
+    /* 
+        bug 描述: 当电机速度较快时,左转弯实现不了,只能前进
+        修改:
+            设置电机速度的最值 v_max
+            获取左右电机速度,并且取出最大值, max
+            按照 max/v_max 的比例缩放左右电机速度,保证最大值不超过 v_max
+            如果比例>=1.0 则 v_left = v_left / k, v_right = v_right / k
+    */
+    
+    double scale = std::max(std::max(left_wheel_rand, right_wheel_rand) / max_velocity_, 1.0);
+    left_wheel_rand = left_wheel_rand / scale;
+    right_wheel_rand = right_wheel_rand / scale;
 
     //写出电机速度指令
     serial_port_->write_diff_drive_control(static_cast<short>(left_wheel_rand), static_cast<short>(right_wheel_rand));
