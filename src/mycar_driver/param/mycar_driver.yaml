@@ -14,4 +14,8 @@ mycar_driver_cpp:
     reduction_ratio: 90.0 #减速比
     encoder_resolution: 44 #编码器分辨率
     max_velocity: 100 #电机速度的最值,单位为 编码器计数/pid周期
+    kp: 300 #PID控制器的比例增益
+    ki: 0 #PID控制器的积分增益
+    kd: 200 #PID控制器的微分增益
+    voltage_topic: "/battery_voltage" #电压话题名称
   

@@ -3,6 +3,9 @@
 #include "mycar_driver/my_serial.hpp"
 
 #include "geometry_msgs/msg/twist.hpp"
+#include <limits>
+#include "std_msgs/msg/u_int16.hpp"
+
 /*
     需求:使用串口通信类结合ros2实现小车的底盘驱动
     流程:
@@ -16,6 +19,11 @@
         4.计算并发布里程计数据
         5.结合角速度/线加速度/欧拉角数据,生成并发布imu消息
         6.实现pid参数的动态调整
+
+    读取电池电压数据,并以话题的方式在ros2中发布
+        使用工具类读取下位机发送的电压数据 -- 使用多线程读取数据(实现异步操作)
+        获取所需要的数据帧对象
+        将帧对象中的数据封装为ros2接口并发布
     
 */
 
@@ -24,7 +32,7 @@ using namespace std::placeholders; //占位符命名空间
 
 class MyCarDriver :public rclcpp::Node{
 public:
-    MyCarDriver(std::string str1):Node(str1), last_cmd_vel_time_(this->now()){
+    MyCarDriver(std::string str1):Node(str1), last_cmd_vel_time_(this->now()), flag_(true){
         RCLCPP_INFO(this->get_logger(),"namesapce:  node: %s 节点创建成功",str1.c_str());
 
         //声明参数
@@ -44,9 +52,13 @@ public:
         this->declare_parameter<double>("wheel_distance",0.5);
         this->declare_parameter<double>("cmd_vel_timeout",0.5);
         this->declare_parameter<double>("cmd_vel_timer_frequency",10.0);
-        this->declare_parameter<double>("reduction_ratio",90.0);
-        this->declare_parameter<int>("encoder_resolution",0);//44
-        this->declare_parameter<int>("max_velocity",1);//电机速度的最值,单位为 编码器计数/pid周期
+        this->declare_parameter<double>("reduction_ratio",90.0,onlyread_descriptor);//减速比
+        this->declare_parameter<int>("encoder_resolution",0,onlyread_descriptor);//44
+        this->declare_parameter<int>("max_velocity",100,onlyread_descriptor);//电机速度的最值,单位为 编码器计数/pid周期
+        this->declare_parameter<int>("kp", 300);
+        this->declare_parameter<int>("ki", 0);
+        this->declare_parameter<int>("kd", 200);
+        this->declare_parameter<std::string>("voltage_topic", "/battery_voltage");
         //获取参数值
         this->get_parameter("port", port_);
         this->get_parameter("baud_rate", baud_rate_);
@@ -63,6 +75,10 @@ public:
         this->get_parameter("reduction_ratio", reduction_ratio_);
         this->get_parameter("encoder_resolution", encoder_resolution_);
         this->get_parameter("max_velocity", max_velocity_);
+        this->get_parameter("kp", kp_);
+        this->get_parameter("ki", ki_);
+        this->get_parameter("kd", kd_);
+        this->get_parameter("voltage_topic", voltage_topic_);
         //实例化串口通信对象
         // serial_port_ = std::make_shared<my_serial::SerialPortComm>("/dev/mycar",115200,8);
         serial_port_ = std::make_shared<my_serial::SerialPortComm>(port_, baud_rate_, data_bits_);
@@ -73,6 +89,13 @@ public:
             baud_rate_,
             data_bits_);
         RCLCPP_INFO(this->get_logger(), "串口通信对象创建成功");
+
+        //写入pid
+        pid_set(kp_, ki_, kd_);
+
+        //注册参数动态回调,用于运行时调整PID
+        parameter_callback_handle_ = this->add_on_set_parameters_callback(
+            std::bind(&MyCarDriver::onParametersSet, this, _1));
 
         //创建订阅速度指令对象
         cmd_vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
@@ -86,12 +109,20 @@ public:
         cmd_vel_timer_ = this->create_wall_timer(std::chrono::milliseconds(static_cast<int>(1000.0 / cmd_control_rate_)), std::bind(&MyCarDriver::cmdVelTimerCallback, this));
         cmd_msg_ = std::make_shared<geometry_msgs::msg::Twist>();//初始化速度指令消息对象
 
+        //电压发布对象
+        voltage_pub_ = this->create_publisher<std_msgs::msg::UInt16>(voltage_topic_, 10);
+
         //判断参数不合法则直接退出
         if(cmd_control_rate_ <= 0 || cmd_vel_timeout_ <= 0 || wheel_diameter_ <= 0 || wheel_distance_ <= 0 || reduction_ratio_ <= 0 || encoder_resolution_ <= 0){
             RCLCPP_ERROR(this->get_logger(), "参数不合法,请检查参数配置");
             rclcpp::shutdown();
             return;
         }
+    }
+
+    void MyCarDriver::~MyCarDriver(){//析构函数,释放资源
+        serial_port_->stop_motor();//停止电机运动
+        flag_ = false;//停止多线程循环
     }
 
 private:
@@ -107,6 +138,8 @@ private:
     double reduction_ratio_;//减速比
     int encoder_resolution_;//编码器分辨率
     int max_velocity_;//电机速度的最值,单位为转/s
+    int kp_, ki_, kd_;//PID参数
+    std::string voltage_topic_;//电压话题名称
 
     std::shared_ptr<rclcpp::Subscription<geometry_msgs::msg::Twist>> cmd_vel_sub_;//速度指令订阅者
     void cmdVelCallback(const geometry_msgs::msg::Twist::SharedPtr msg);//速度指令消息处理
@@ -120,6 +153,29 @@ private:
     std::mutex cmd_vel_mutex_;//保护cmd_vel_stop_变量的互斥锁
     std::shared_ptr<geometry_msgs::msg::Twist> cmd_msg_;//收到的速度指令
 
+    std::shared_ptr<rclcpp::node_interfaces::OnSetParametersCallbackHandle> parameter_callback_handle_;//参数回调句柄
+    rcl_interfaces::msg::SetParametersResult onParametersSet(const std::vector<rclcpp::Parameter> &parameters);//动态参数回调
+
+    void pid_set(double kp, double ki, double kd){
+        //设置pid参数
+        serial_port_->write_pid(kp, ki, kd);
+    }
+
+    //创建多线程的函数
+    void startThread(){
+        //以多线程的方式解析数据
+        std::thread(std::bind(&MyCarDriver::publishBatteryVoltage,this)).detach();
+    }
+    //解析电池电压数据并发布
+    void publishBatteryVoltage();
+
+    //主线程状态标记
+    bool flag_;
+    
+    //创建电压发布对象 电压单位mv
+    rclcpp::Publisher<std_msgs::msg::UInt16>::SharedPtr voltage_pub_;
+
+
 };
 
 int main(int argc, char * argv[])
@@ -132,6 +188,7 @@ int main(int argc, char * argv[])
 
     //释放资源
     rclcpp::shutdown();
+
     return 0;
 }
 
@@ -234,4 +291,83 @@ void MyCarDriver::cmdVelTimerCallback(){
     //写出电机速度指令
     serial_port_->write_diff_drive_control(static_cast<short>(left_wheel_rand), static_cast<short>(right_wheel_rand));
 
+}
+
+
+rcl_interfaces::msg::SetParametersResult MyCarDriver::onParametersSet(const std::vector<rclcpp::Parameter> &parameters){
+    rcl_interfaces::msg::SetParametersResult result;
+    result.successful = true;//默认成功
+
+    int new_kp = kp_;
+    int new_ki = ki_;
+    int new_kd = kd_;
+    bool has_pid_change = false;
+
+    for(const auto &param : parameters){
+        const auto &name = param.get_name();
+        if(name != "kp" && name != "ki" && name != "kd"){
+            continue;
+        }
+
+        if(param.get_type() != rclcpp::ParameterType::PARAMETER_INTEGER){
+            result.successful = false;
+            result.reason = name + " 必须是整数类型";
+            return result;
+        }
+
+        const auto value = param.as_int();
+        if(value < 0 || value > std::numeric_limits<short>::max()){
+            result.successful = false;
+            result.reason = name + " 超出范围(0~32767)";
+            return result;
+        }
+
+        has_pid_change = true;
+        if(name == "kp"){
+            new_kp = static_cast<int>(value);
+        }else if(name == "ki"){
+            new_ki = static_cast<int>(value);
+        }else{
+            new_kd = static_cast<int>(value);
+        }
+    }
+
+    if(!has_pid_change){
+        return result;
+    }
+
+    kp_ = new_kp;
+    ki_ = new_ki;
+    kd_ = new_kd;
+    pid_set(kp_, ki_, kd_);
+
+    RCLCPP_INFO(this->get_logger(), "PID参数动态更新成功: kp=%d, ki=%d, kd=%d", kp_, ki_, kd_);
+    return result;
+}
+
+
+//解析电池电压数据并发布
+/**
+ * @brief 循环读取电池电压数据并发布。
+ *
+ * 此函数会在ROS2节点运行且flag_为真时持续循环，从串口读取电池电压数据。
+ * 读取的数据通过合并高低字节转换为16位整数（单位为毫伏），并以ROS2消息的形式发布。
+ * 若读取失败（返回空指针），则跳过本次循环，继续尝试读取。
+ *
+ * 注意：头文件中已保证不会出现空指针，但为保险起见仍做了空指针判断。
+ */
+void MyCarDriver::publishBatteryVoltage(){
+    //循环读取电池电压数据,并发布
+    while(rclcpp::ok() && flag_){
+        auto msg = serial_port_->read_message(my_serial::FunctionCode::VOLTAGE);
+        if(msg == nullptr){//在头文件中我有设置,不会出现空指针现像,但是为了保险起见,我还是加上这个判断
+            continue;//读取数据失败,继续下一次循环
+        }
+        //处理电压数据
+        std_msgs::msg::UInt16 vol;
+        vol.data = ((msg->data[0] << 8) & 0xff00) | (msg->data[1] & 0x00ff);//将高字节和低字节合并成一个16位的整数,单位为mv
+        //发布电压数据
+        voltage_pub_->publish(vol);
+        rclcpp::Rate(10).sleep();//控制发布频率为10Hz,避免过快发布导致系统负载过高
+    }
 }

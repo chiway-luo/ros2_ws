@@ -9,6 +9,7 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(std_msgs   REQUIRED)
 
 add_executable(driver src/driver.cpp)
 target_include_directories(driver PUBLIC
@@ -39,3 +40,61 @@ if(BUILD_TESTING)
 endif()
 
 ament_package()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+"""
+    我的一生还剩下几个十年
+"""
