@@ -120,7 +120,7 @@ public:
         }
     }
 
-    void MyCarDriver::~MyCarDriver(){//析构函数,释放资源
+    ~MyCarDriver(){//析构函数,释放资源
         serial_port_->stop_motor();//停止电机运动
         flag_ = false;//停止多线程循环
     }
