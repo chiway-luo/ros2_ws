@@ -20,6 +20,7 @@ ament_target_dependencies(
   driver
   "rclcpp"
   "geometry_msgs"
+  "std_msgs"
 )
 
 install(TARGETS driver
