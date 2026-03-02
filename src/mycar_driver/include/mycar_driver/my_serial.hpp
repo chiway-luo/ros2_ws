@@ -198,7 +198,10 @@ inline std::shared_ptr<Message> SerialPortComm::read_message(FunctionCode need_f
                 current_status_ = READING_FUNCTION;//更新状态为读取功能位
                 check_num_ = buffer_[0];//将帧头存储到校验变量中,用于后续校验
             }
-            break;
+            else{
+                break;
+            }
+            // fall through
         case READING_FUNCTION://读取功能位
             //从串口读取一个字节
             boost::asio::read(serial, boost::asio::buffer(buffer_, 1), error);
@@ -213,8 +216,9 @@ inline std::shared_ptr<Message> SerialPortComm::read_message(FunctionCode need_f
                 current_function_code_ = static_cast<FunctionCode>(buffer_[0]);//将功能位存储到当前功能位变量中,用于后续解析数据
             }else{
                 current_status_ = WAITING_FOR_HEADER;//如果功能位不合法,重新查找帧头
+                break;
             }
-            break;
+            // fall through
         case READING_DATA://读取数据位
             boost::asio::read(serial, boost::asio::buffer(&data_[0], 8), error);
             if (error)
@@ -228,7 +232,7 @@ inline std::shared_ptr<Message> SerialPortComm::read_message(FunctionCode need_f
             }
             //设置状态
             current_status_ = READING_CHECKSUM;//更新状态为读取校验位
-            break;
+            // fall through
         case READING_CHECKSUM://读取校验位
             boost::asio::read(serial, boost::asio::buffer(&buffer_[0], 1), error);
             if (error)        {
@@ -242,8 +246,9 @@ inline std::shared_ptr<Message> SerialPortComm::read_message(FunctionCode need_f
             }else{
                 //校验失败
                 current_status_ = WAITING_FOR_HEADER;//更新状态为等待帧头
+                break;
             }
-            break;
+            // fall through
         case READING_END://读取结束位
             current_status_ = WAITING_FOR_HEADER;//无论成功与否都要重新查找帧头
             boost::asio::read(serial, boost::asio::buffer(&buffer_[0],1), error);
@@ -260,7 +265,6 @@ inline std::shared_ptr<Message> SerialPortComm::read_message(FunctionCode need_f
                 return msg;
             }
             break;
-            
         default:
             current_status_ = WAITING_FOR_HEADER;
             break;
