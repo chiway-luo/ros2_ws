@@ -1,0 +1,5 @@
+mycar_driver_cpp:
+  ros__parameters:
+    port: "/dev/ttyUSB0"
+    baud_rate: 115200
+    data_bits: 8
