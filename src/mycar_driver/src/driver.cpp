@@ -25,30 +25,47 @@ public:
     MyCarDriver(std::string str1):Node(str1){
         RCLCPP_INFO(this->get_logger(),"namesapce:  node: %s 节点创建成功",str1.c_str());
 
-        this->declare_parameter<std::string>("port", "/dev/mycar");
-        this->declare_parameter<int>("baud_rate", 115200);
-        this->declare_parameter<int>("data_bits", 8);
+        //声明参数
+        //将部分参数设置为只读模式
+        rcl_interfaces::msg::ParameterDescriptor onlyread_descriptor;
+        onlyread_descriptor.read_only = true;
+        this->declare_parameter<std::string>("port", "/dev/ttyUSB0", onlyread_descriptor);
+        this->declare_parameter<int>("baud_rate", 115200, onlyread_descriptor);
+        this->declare_parameter<int>("data_bits", 8, onlyread_descriptor);
 
-        const auto port = this->get_parameter("port").as_string();
-        const auto baud_rate = this->get_parameter("baud_rate").as_int();
-        const auto data_bits = this->get_parameter("data_bits").as_int();
+        this->declare_parameter<std::string>("odom_frame","odom");
+        this->declare_parameter<std::string>("odom_topic","/odom");
+        this->declare_parameter<std::string>("imu_frame","imu");
+        this->declare_parameter<std::string>("imu_topic","/imu");
+        //获取参数值
+        this->get_parameter("port", port_);
+        this->get_parameter("baud_rate", baud_rate_);
+        this->get_parameter("data_bits", data_bits_);
+
+        this->get_parameter("odom_frame", odom_frame_);
+        this->get_parameter("odom_topic", odom_topic_);
+        this->get_parameter("imu_frame", imu_frame_);
+        this->get_parameter("imu_topic", imu_topic_);
 
         //实例化串口通信对象
-        serial_port_ = std::make_shared<my_serial::SerialPortComm>(port, baud_rate, data_bits);
-
+        // serial_port_ = std::make_shared<my_serial::SerialPortComm>("/dev/mycar",115200,8);
+        serial_port_ = std::make_shared<my_serial::SerialPortComm>(port_, baud_rate_, data_bits_);
         RCLCPP_INFO(
             this->get_logger(),
             "串口参数: port=%s, baud_rate=%d, data_bits=%d",
-            port.c_str(),
-            baud_rate,
-            data_bits);
-
-        
+            port_.c_str(),
+            baud_rate_,
+            data_bits_);
+        RCLCPP_INFO(this->get_logger(), "串口通信对象创建成功");
 
     }
 
 private:
     std::shared_ptr<my_serial::SerialPortComm> serial_port_;//串口通信对象指针
+    std::string port_;//串口名称
+    int baud_rate_,data_bits_;//波特率和数据位
+    std::string odom_frame_, odom_topic_;//里程计坐标系和话题名称
+    std::string imu_frame_, imu_topic_;//imu坐标系和话题名称
 };
 
 int main(int argc, char * argv[])

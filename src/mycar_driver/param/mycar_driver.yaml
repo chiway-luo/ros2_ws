@@ -1,5 +1,9 @@
 mycar_driver_cpp:
   ros__parameters:
-    port: "/dev/ttyUSB0"
+    port: "/dev/mycar"
     baud_rate: 115200
     data_bits: 8
+    odom_frame: "odom"
+    odom_topic: "/odom"
+    imu_frame: "imu"
+    imu_topic: "/imu"
