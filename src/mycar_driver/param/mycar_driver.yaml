@@ -13,5 +13,5 @@ mycar_driver_cpp:
     cmd_vel_timer_frequency: 10.0 #速度指令定时器频率,单位Hz
     reduction_ratio: 90.0 #减速比
     encoder_resolution: 44 #编码器分辨率
-    max_velocity: 1 #电机速度的最值,单位为 编码器计数/pid周期
+    max_velocity: 100 #电机速度的最值,单位为 编码器计数/pid周期
   
