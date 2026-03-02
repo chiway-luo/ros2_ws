@@ -88,6 +88,11 @@ public:
         write_motor_speed(0,0,0,0);
     }
 
+    //获取pid频率的函数
+    int get_pid_rate() const{
+        return pid_rate_;
+    }
+
 private:
     boost::asio::io_context io;//io上下文对象
     boost::asio::serial_port serial;//串口通信对象
@@ -103,13 +108,15 @@ private:
     uint8_t check_num_ = 0xFC;
     //设置一个用于存储消息功能类型的变量
     FunctionCode current_function_code_;
+
+    int pid_rate_;//pid频率,单位hz
     
 
 };
 
 //串口号 /dev/mycar
 SerialPortComm::SerialPortComm(const std::string& port,int baud_rate,int character_size) : 
-    io(), serial(io), current_status_(WAITING_FOR_HEADER), check_num_(0xFC){//初始化串口对象
+    io(), serial(io), current_status_(WAITING_FOR_HEADER), check_num_(0xFC), pid_rate_(25){//初始化串口对象
 
     std::cout << "打开串口" << std::endl;
     //打开串口

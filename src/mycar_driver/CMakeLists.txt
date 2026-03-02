@@ -8,6 +8,7 @@ endif()
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(geometry_msgs REQUIRED)
 
 add_executable(driver src/driver.cpp)
 target_include_directories(driver PUBLIC
@@ -17,6 +18,7 @@ target_compile_features(driver PUBLIC c_std_99 cxx_std_17)  # Require C99 and C+
 ament_target_dependencies(
   driver
   "rclcpp"
+  "geometry_msgs"
 )
 
 install(TARGETS driver

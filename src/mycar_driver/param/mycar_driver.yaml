@@ -7,3 +7,10 @@ mycar_driver_cpp:
     odom_topic: "/odom"
     imu_frame: "imu"
     imu_topic: "/imu"
+    wheel_diameter: 0.0325 #车轮半径 单位米 0.065 / 2
+    wheel_distance: 0.21 #车轮间距
+    cmd_vel_timeout: 0.1 #速度指令超时时间,单位秒
+    cmd_vel_timer_frequency: 10.0 #速度指令定时器频率,单位Hz
+    reduction_ratio: 90.0 #减速比
+    encoder_resolution: 44 #编码器分辨率
+  
