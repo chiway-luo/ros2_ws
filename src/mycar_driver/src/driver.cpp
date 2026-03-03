@@ -124,6 +124,10 @@ public:
         //里程计数据发布对象
         // odom_pub_ = this->create_publisher<nav_msgs::msg::Odometry>(odom_topic_, 10);
 
+        //启动电压读取与发布线程
+        startThread();
+        // RCLCPP_INFO(this->get_logger(), "电压发布线程已启动, topic=%s", voltage_topic_.c_str());
+
         //判断参数不合法则直接退出
         if(cmd_control_rate_ <= 0 || cmd_vel_timeout_ <= 0 || wheel_diameter_ <= 0 || wheel_distance_ <= 0 || reduction_ratio_ <= 0 || encoder_resolution_ <= 0){
             RCLCPP_ERROR(this->get_logger(), "参数不合法,请检查参数配置");
