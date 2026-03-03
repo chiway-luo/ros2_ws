@@ -182,13 +182,8 @@ private:
         serial_port_->write_pid(kp, ki, kd);
     }
 
-    //创建线程的函数
-    void startThread(){
-        //一个读串口线程 + 一个电压分发线程 + 一个编码器分发线程
-        std::thread(std::bind(&MyCarDriver::getMessage,this)).detach();
-        std::thread(std::bind(&MyCarDriver::dispatchVoltageMessage,this)).detach();
-        std::thread(std::bind(&MyCarDriver::dispatchEncoderMessage,this)).detach();
-    }
+    //创建子线程函数
+    void startThread();
     //在子线程中读取数据
     void getMessage();
     //在子线程中分发电压数据
@@ -389,6 +384,13 @@ rcl_interfaces::msg::SetParametersResult MyCarDriver::onParametersSet(const std:
     return result;
 }
 
+//创建线程的函数
+void MyCarDriver::startThread(){
+    //一个读串口线程 + 一个电压分发线程 + 一个编码器分发线程
+    std::thread(std::bind(&MyCarDriver::getMessage,this)).detach();
+    std::thread(std::bind(&MyCarDriver::dispatchVoltageMessage,this)).detach();//电压数据分发线程
+    std::thread(std::bind(&MyCarDriver::dispatchEncoderMessage,this)).detach();//编码器数据分发线程
+}
 
 //在子线程中读取数据
 void MyCarDriver::getMessage(){
@@ -418,7 +420,7 @@ void MyCarDriver::getMessage(){
         }
     }
 }
-
+//在子线程中分发电压数据
 void MyCarDriver::dispatchVoltageMessage(){
     while(rclcpp::ok() && flag_){
         std::shared_ptr<my_serial::Message> msg;
@@ -435,15 +437,13 @@ void MyCarDriver::dispatchVoltageMessage(){
             msg = voltage_queue_.front();
             voltage_queue_.pop_front();
         }
-
         if(msg == nullptr){
             continue;
         }
-
         publishBatteryVoltage(msg);
     }
 }
-
+//在子线程中分发编码器数据
 void MyCarDriver::dispatchEncoderMessage(){
     while(rclcpp::ok() && flag_){
         std::shared_ptr<my_serial::Message> msg;
@@ -486,6 +486,7 @@ void MyCarDriver::publishBatteryVoltage(std::shared_ptr<my_serial::Message> msg)
     vol.data = ((msg->data[0] << 8) & 0xff00) | (msg->data[1] & 0x00ff);//将高字节和低字节合并成一个16位的整数,单位为mv
     //发布电压数据
     voltage_pub_->publish(vol);
+    rclcpp::Rate(10).sleep();//发布频率不宜过高,10Hz即可
 }
 
 //解析编码器数据并发布
@@ -501,4 +502,5 @@ void MyCarDriver::publishEncoderData(std::shared_ptr<my_serial::Message> msg){//
         encoder_data.data.push_back(((msg->data[i*2] << 8) & 0xff00) | (msg->data[i*2+1] & 0x00ff));
     }
     encoder_pub_->publish(encoder_data);
+    rclcpp::Rate(10).sleep();
 }
