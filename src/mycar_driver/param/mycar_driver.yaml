@@ -18,4 +18,5 @@ mycar_driver_cpp:
     ki: 0 #PID控制器的积分增益
     kd: 200 #PID控制器的微分增益
     voltage_topic: "/battery_voltage" #电压话题名称
+    encoder_topic: "/encoder_data" #编码器数据话题名称
   

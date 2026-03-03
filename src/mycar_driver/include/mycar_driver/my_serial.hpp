@@ -61,6 +61,7 @@ public:
 
     //读取数据,对数据进行解析,封装成对应的对象
     inline std::shared_ptr<Message> read_message(FunctionCode need_function_code);
+    inline std::shared_ptr<Message> read_message();
 
     //写出电机速度指令
     void write_motor_speed(short motor1_speed,short motor2_speed,short motor3_speed,short motor4_speed);
@@ -277,10 +278,7 @@ inline std::shared_ptr<Message> SerialPortComm::read_message(FunctionCode need_f
             break;
         }
         
-    }
-    
-
-    
+    }  
     return nullptr;
 
 }
@@ -385,7 +383,101 @@ void SerialPortComm::calculate_checksum(std::array<uint8_t, 12> &data){
 }
 
 
+//读取数据的重载函数
+inline std::shared_ptr<Message> SerialPortComm::read_message(){
 
+    while (serial.is_open())
+    {
+        switch (current_status_)
+        {
+        case WAITING_FOR_HEADER://查找帧头
+            //从串口读取一个字节,查找是否是帧头
+            boost::asio::read(serial, boost::asio::buffer(buffer_, 1), error);
+            if(error){
+                handle_error("读取数据失败: ", error);
+                return nullptr;
+            }
+            //判断是否是帧头
+            if(buffer_[0] == 0xFC){
+                current_status_ = READING_FUNCTION;//更新状态为读取功能位
+                check_num_ = buffer_[0];//将帧头存储到校验变量中,用于后续校验
+            }
+            else{
+                break;
+            }
+            // fall through
+        case READING_FUNCTION://读取功能位
+            //从串口读取一个字节
+            boost::asio::read(serial, boost::asio::buffer(buffer_, 1), error);
+            if(error){
+                handle_error("读取数据失败: ", error);
+                return nullptr;
+            }
+            //判断功能位是否合法 且符合查找要求
+            if (buffer_[0] >= 0x01 && buffer_[0] <= 0x05){
+                current_status_ = READING_DATA;//更新状态为读取数据位
+                check_num_ ^= buffer_[0];//将功能位与校验变量进行异或运算,更新校验变量的值
+                current_function_code_ = static_cast<FunctionCode>(buffer_[0]);//将功能位存储到当前功能位变量中,用于后续解析数据
+            }else{
+                current_status_ = WAITING_FOR_HEADER;//如果功能位不合法,重新查找帧头
+                break;
+            }
+            // fall through
+        case READING_DATA://读取数据位
+            boost::asio::read(serial, boost::asio::buffer(&data_[0], 8), error);
+            if (error)
+            {
+                handle_error("读取数据失败: ", error);
+                return nullptr;
+            }
+            //异或校验
+            for (size_t i = 0; i < 8; ++i){
+                check_num_ ^= data_[i];
+            }
+            //设置状态
+            current_status_ = READING_CHECKSUM;//更新状态为读取校验位
+            // fall through
+        case READING_CHECKSUM://读取校验位
+            boost::asio::read(serial, boost::asio::buffer(&buffer_[0], 1), error);
+            if (error)        {
+                handle_error("读取数据失败: ", error);
+                return nullptr;
+            }
+            //判断校验位是否和我们的一致
+            if (buffer_[0] == check_num_){
+                //校验成功
+                current_status_ = READING_END;//更新状态为读取结束位
+            }else{
+                //校验失败
+                current_status_ = WAITING_FOR_HEADER;//更新状态为等待帧头
+                break;
+            }
+            // fall through
+        case READING_END://读取结束位
+            current_status_ = WAITING_FOR_HEADER;//无论成功与否都要重新查找帧头
+            boost::asio::read(serial, boost::asio::buffer(&buffer_[0],1), error);
+            if (error){
+                handle_error("读取数据失败: ", error);
+                return nullptr;
+            }
+            //判断结束位是否正确
+            if (buffer_[0] == 0xDF){
+                //组织并返回对象
+                std::shared_ptr<Message> msg = std::make_shared<Message>();
+                msg->function_code = current_function_code_;//设置功能位
+                msg->data = std::vector<uint8_t>(data_.begin(), data_.end());//设置数据位
+                return msg;
+            }
+            break;
+        default:
+            current_status_ = WAITING_FOR_HEADER;
+            break;
+        }
+        
+    }  
+    return nullptr;
+
+}
 
 
 

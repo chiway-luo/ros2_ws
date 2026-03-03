@@ -3,8 +3,15 @@
 #include "mycar_driver/my_serial.hpp"
 
 #include "geometry_msgs/msg/twist.hpp"
+#include <atomic>
+#include <condition_variable>
+#include <deque>
 #include <limits>
-#include "std_msgs/msg/u_int16.hpp"
+#include <mutex>
+#include <thread>
+#include "std_msgs/msg/u_int16.hpp"//电池电压
+#include "std_msgs/msg/u_int16_multi_array.hpp"//编码器数据
+#include "nav_msgs/msg/odometry.hpp"//里程计数据
 
 /*
     需求:使用串口通信类结合ros2实现小车的底盘驱动
@@ -59,6 +66,7 @@ public:
         this->declare_parameter<int>("ki", 0);
         this->declare_parameter<int>("kd", 200);
         this->declare_parameter<std::string>("voltage_topic", "/battery_voltage");
+        this->declare_parameter<std::string>("encoder_topic", "/encoder_data");
         //获取参数值
         this->get_parameter("port", port_);
         this->get_parameter("baud_rate", baud_rate_);
@@ -79,6 +87,7 @@ public:
         this->get_parameter("ki", ki_);
         this->get_parameter("kd", kd_);
         this->get_parameter("voltage_topic", voltage_topic_);
+        this->get_parameter("encoder_topic", encoder_topic_);
         //实例化串口通信对象
         // serial_port_ = std::make_shared<my_serial::SerialPortComm>("/dev/mycar",115200,8);
         serial_port_ = std::make_shared<my_serial::SerialPortComm>(port_, baud_rate_, data_bits_);
@@ -111,6 +120,9 @@ public:
 
         //电压发布对象
         voltage_pub_ = this->create_publisher<std_msgs::msg::UInt16>(voltage_topic_, 10);
+        encoder_pub_ = this->create_publisher<std_msgs::msg::UInt16MultiArray>(encoder_topic_, 10);
+        //里程计数据发布对象
+        // odom_pub_ = this->create_publisher<nav_msgs::msg::Odometry>(odom_topic_, 10);
 
         //判断参数不合法则直接退出
         if(cmd_control_rate_ <= 0 || cmd_vel_timeout_ <= 0 || wheel_diameter_ <= 0 || wheel_distance_ <= 0 || reduction_ratio_ <= 0 || encoder_resolution_ <= 0){
@@ -118,11 +130,15 @@ public:
             rclcpp::shutdown();
             return;
         }
+
+        //启动单独串口读取线程(只允许一个线程读取串口)
+        startThread();
     }
 
     ~MyCarDriver(){//析构函数,释放资源
-        serial_port_->stop_motor();//停止电机运动
         flag_ = false;//停止多线程循环
+        msg_queue_cv_.notify_all();//唤醒等待中的分发线程
+        serial_port_->stop_motor();//停止电机运动
     }
 
 private:
@@ -140,6 +156,7 @@ private:
     int max_velocity_;//电机速度的最值,单位为转/s
     int kp_, ki_, kd_;//PID参数
     std::string voltage_topic_;//电压话题名称
+    std::string encoder_topic_;//编码器数据话题名称
 
     std::shared_ptr<rclcpp::Subscription<geometry_msgs::msg::Twist>> cmd_vel_sub_;//速度指令订阅者
     void cmdVelCallback(const geometry_msgs::msg::Twist::SharedPtr msg);//速度指令消息处理
@@ -161,19 +178,34 @@ private:
         serial_port_->write_pid(kp, ki, kd);
     }
 
-    //创建多线程的函数
+    //创建线程的函数
     void startThread(){
-        //以多线程的方式解析数据
-        std::thread(std::bind(&MyCarDriver::publishBatteryVoltage,this)).detach();
+        //一个读串口线程 + 一个分发线程
+        std::thread(std::bind(&MyCarDriver::getMessage,this)).detach();
+        std::thread(std::bind(&MyCarDriver::dispatchMessage,this)).detach();
     }
+    //在子线程中读取数据
+    void getMessage();
+    //在子线程中分发数据
+    void dispatchMessage();
     //解析电池电压数据并发布
-    void publishBatteryVoltage();
+    void publishBatteryVoltage(std::shared_ptr<my_serial::Message> msg);
+    //解析编码器数据并发布
+    void publishEncoderData(std::shared_ptr<my_serial::Message> msg);
+
 
     //主线程状态标记
-    bool flag_;
+    std::atomic<bool> flag_;
+
+    std::mutex msg_queue_mutex_;
+    std::condition_variable msg_queue_cv_;
+    std::deque<std::shared_ptr<my_serial::Message>> msg_queue_;
+    static constexpr std::size_t max_msg_queue_size_ = 100;
     
     //创建电压发布对象 电压单位mv
     rclcpp::Publisher<std_msgs::msg::UInt16>::SharedPtr voltage_pub_;
+    //里程计数据发布对象
+    rclcpp::Publisher<std_msgs::msg::UInt16MultiArray>::SharedPtr encoder_pub_;
 
 
 };
@@ -346,6 +378,62 @@ rcl_interfaces::msg::SetParametersResult MyCarDriver::onParametersSet(const std:
 }
 
 
+//在子线程中读取数据
+void MyCarDriver::getMessage(){
+    while(rclcpp::ok() && flag_){
+        //只负责读取串口数据并入队,不做业务处理
+        auto msg = serial_port_->read_message();
+        if(msg == nullptr){//在头文件中我有设置,不会出现空指针现像,但是为了保险起见,我还是加上这个判断
+            continue;//读取数据失败,继续下一次循环
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(msg_queue_mutex_);
+            if(msg_queue_.size() >= max_msg_queue_size_){
+                msg_queue_.pop_front();//队列满时丢弃最旧数据,保证读取线程不被阻塞
+            }
+            msg_queue_.push_back(msg);
+        }
+        msg_queue_cv_.notify_one();
+    }
+}
+
+void MyCarDriver::dispatchMessage(){
+    while(rclcpp::ok() && flag_){
+        std::shared_ptr<my_serial::Message> msg;
+        {
+            std::unique_lock<std::mutex> lock(msg_queue_mutex_);
+            msg_queue_cv_.wait(lock, [this](){
+                return !msg_queue_.empty() || !flag_;
+            });
+
+            if(!flag_ && msg_queue_.empty()){
+                return;
+            }
+
+            msg = msg_queue_.front();
+            msg_queue_.pop_front();
+        }
+
+        if(msg == nullptr){
+            continue;
+        }
+
+        switch (msg->function_code)
+        {
+        case my_serial::FunctionCode::VOLTAGE://电压数据
+            publishBatteryVoltage(msg);
+            break;
+        case my_serial::FunctionCode::WHEEL_ENCODER://编码器数据(轮速)
+            publishEncoderData(msg);
+            break;
+        default:
+            break;
+        }
+    }
+}
+
+
 //解析电池电压数据并发布
 /**
  * @brief 循环读取电池电压数据并发布。
@@ -356,18 +444,27 @@ rcl_interfaces::msg::SetParametersResult MyCarDriver::onParametersSet(const std:
  *
  * 注意：头文件中已保证不会出现空指针，但为保险起见仍做了空指针判断。
  */
-void MyCarDriver::publishBatteryVoltage(){
-    //循环读取电池电压数据,并发布
-    while(rclcpp::ok() && flag_){
-        auto msg = serial_port_->read_message(my_serial::FunctionCode::VOLTAGE);
-        if(msg == nullptr){//在头文件中我有设置,不会出现空指针现像,但是为了保险起见,我还是加上这个判断
-            continue;//读取数据失败,继续下一次循环
-        }
-        //处理电压数据
-        std_msgs::msg::UInt16 vol;
-        vol.data = ((msg->data[0] << 8) & 0xff00) | (msg->data[1] & 0x00ff);//将高字节和低字节合并成一个16位的整数,单位为mv
-        //发布电压数据
-        voltage_pub_->publish(vol);
-        rclcpp::Rate(10).sleep();//控制发布频率为10Hz,避免过快发布导致系统负载过高
+void MyCarDriver::publishBatteryVoltage(std::shared_ptr<my_serial::Message> msg){
+    //处理电压数据
+    std_msgs::msg::UInt16 vol;
+    vol.data = ((msg->data[0] << 8) & 0xff00) | (msg->data[1] & 0x00ff);//将高字节和低字节合并成一个16位的整数,单位为mv
+    //发布电压数据
+    voltage_pub_->publish(vol);
+    rclcpp::Rate(10).sleep();//10hz
+}
+
+//解析编码器数据并发布
+void MyCarDriver::publishEncoderData(std::shared_ptr<my_serial::Message> msg){//8数据位,每个轮子4字节
+    //处理编码器数据
+    std_msgs::msg::UInt16MultiArray encoder_data;
+    // encoder_data.data.resize(msg->data.size());
+    // int temp = 0;
+    // for(size_t i = 0; i < 8; ++i){
+    //     i % 2 ==0 ? (temp |= (msg->data[i] & 0x00ff)) : (temp = (msg->data[i] << 8) & 0xff00);
+    // }
+    for(size_t i = 0; i < 4; ++i){
+        encoder_data.data.push_back(((msg->data[i*2] << 8) & 0xff00) | (msg->data[i*2+1] & 0x00ff));
     }
+    encoder_pub_->publish(encoder_data);
+    rclcpp::Rate(10).sleep();//10hz
 }
