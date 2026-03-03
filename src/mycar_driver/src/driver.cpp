@@ -125,6 +125,7 @@ public:
         // odom_pub_ = this->create_publisher<nav_msgs::msg::Odometry>(odom_topic_, 10);
 
         //启动电压读取与发布线程
+        //启动单独串口读取线程(只允许一个线程读取串口)
         startThread();
         // RCLCPP_INFO(this->get_logger(), "电压发布线程已启动, topic=%s", voltage_topic_.c_str());
 
@@ -135,8 +136,6 @@ public:
             return;
         }
 
-        //启动单独串口读取线程(只允许一个线程读取串口)
-        startThread();
     }
 
     ~MyCarDriver(){//析构函数,释放资源
