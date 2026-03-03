@@ -140,7 +140,8 @@ public:
 
     ~MyCarDriver(){//析构函数,释放资源
         flag_ = false;//停止多线程循环
-        msg_queue_cv_.notify_all();//唤醒等待中的分发线程
+        voltage_queue_cv_.notify_all();//唤醒等待中的电压分发线程
+        encoder_queue_cv_.notify_all();//唤醒等待中的编码器分发线程
         serial_port_->stop_motor();//停止电机运动
     }
 
@@ -183,14 +184,17 @@ private:
 
     //创建线程的函数
     void startThread(){
-        //一个读串口线程 + 一个分发线程
+        //一个读串口线程 + 一个电压分发线程 + 一个编码器分发线程
         std::thread(std::bind(&MyCarDriver::getMessage,this)).detach();
-        std::thread(std::bind(&MyCarDriver::dispatchMessage,this)).detach();
+        std::thread(std::bind(&MyCarDriver::dispatchVoltageMessage,this)).detach();
+        std::thread(std::bind(&MyCarDriver::dispatchEncoderMessage,this)).detach();
     }
     //在子线程中读取数据
     void getMessage();
-    //在子线程中分发数据
-    void dispatchMessage();
+    //在子线程中分发电压数据
+    void dispatchVoltageMessage();
+    //在子线程中分发编码器数据
+    void dispatchEncoderMessage();
     //解析电池电压数据并发布
     void publishBatteryVoltage(std::shared_ptr<my_serial::Message> msg);
     //解析编码器数据并发布
@@ -200,10 +204,15 @@ private:
     //主线程状态标记
     std::atomic<bool> flag_;
 
-    std::mutex msg_queue_mutex_;
-    std::condition_variable msg_queue_cv_;
-    std::deque<std::shared_ptr<my_serial::Message>> msg_queue_;
-    static constexpr std::size_t max_msg_queue_size_ = 100;
+    std::mutex voltage_queue_mutex_; //电压数据队列互斥锁
+    std::condition_variable voltage_queue_cv_; //电压数据队列条件变量
+    std::deque<std::shared_ptr<my_serial::Message>> voltage_queue_; //电压数据独立队列
+    static constexpr std::size_t max_voltage_queue_size_ = 20; //电压队列最大容量
+
+    std::mutex encoder_queue_mutex_; //编码器数据队列互斥锁
+    std::condition_variable encoder_queue_cv_; //编码器数据队列条件变量
+    std::deque<std::shared_ptr<my_serial::Message>> encoder_queue_; //编码器数据独立队列
+    static constexpr std::size_t max_encoder_queue_size_ = 100; //编码器队列最大容量
     
     //创建电压发布对象 电压单位mv
     rclcpp::Publisher<std_msgs::msg::UInt16>::SharedPtr voltage_pub_;
@@ -390,49 +399,73 @@ void MyCarDriver::getMessage(){
             continue;//读取数据失败,继续下一次循环
         }
 
-        {
-            std::lock_guard<std::mutex> lock(msg_queue_mutex_);
-            if(msg_queue_.size() >= max_msg_queue_size_){
-                msg_queue_.pop_front();//队列满时丢弃最旧数据,保证读取线程不被阻塞
+        if(msg->function_code == my_serial::FunctionCode::VOLTAGE){
+            //电压数据放入电压队列
+            std::lock_guard<std::mutex> lock(voltage_queue_mutex_);
+            if(voltage_queue_.size() >= max_voltage_queue_size_){
+                voltage_queue_.pop_front();//队列满时丢弃最旧数据,保证读取线程不被阻塞
             }
-            msg_queue_.push_back(msg);
+            voltage_queue_.push_back(msg);
+            voltage_queue_cv_.notify_one();
+        } else if(msg->function_code == my_serial::FunctionCode::WHEEL_ENCODER){
+            //编码器数据放入编码器队列
+            std::lock_guard<std::mutex> lock(encoder_queue_mutex_);
+            if(encoder_queue_.size() >= max_encoder_queue_size_){
+                encoder_queue_.pop_front();//队列满时丢弃最旧数据,保证读取线程不被阻塞
+            }
+            encoder_queue_.push_back(msg);
+            encoder_queue_cv_.notify_one();
         }
-        msg_queue_cv_.notify_one();
     }
 }
 
-void MyCarDriver::dispatchMessage(){
+void MyCarDriver::dispatchVoltageMessage(){
     while(rclcpp::ok() && flag_){
         std::shared_ptr<my_serial::Message> msg;
         {
-            std::unique_lock<std::mutex> lock(msg_queue_mutex_);
-            msg_queue_cv_.wait(lock, [this](){
-                return !msg_queue_.empty() || !flag_;
+            std::unique_lock<std::mutex> lock(voltage_queue_mutex_);
+            voltage_queue_cv_.wait(lock, [this](){
+                return !voltage_queue_.empty() || !flag_;
             });
 
-            if(!flag_ && msg_queue_.empty()){
+            if(!flag_ && voltage_queue_.empty()){
                 return;
             }
 
-            msg = msg_queue_.front();
-            msg_queue_.pop_front();
+            msg = voltage_queue_.front();
+            voltage_queue_.pop_front();
         }
 
         if(msg == nullptr){
             continue;
         }
 
-        switch (msg->function_code)
+        publishBatteryVoltage(msg);
+    }
+}
+
+void MyCarDriver::dispatchEncoderMessage(){
+    while(rclcpp::ok() && flag_){
+        std::shared_ptr<my_serial::Message> msg;
         {
-        case my_serial::FunctionCode::VOLTAGE://电压数据
-            publishBatteryVoltage(msg);
-            break;
-        case my_serial::FunctionCode::WHEEL_ENCODER://编码器数据(轮速)
-            publishEncoderData(msg);
-            break;
-        default:
-            break;
+            std::unique_lock<std::mutex> lock(encoder_queue_mutex_);
+            encoder_queue_cv_.wait(lock, [this](){
+                return !encoder_queue_.empty() || !flag_;
+            });
+
+            if(!flag_ && encoder_queue_.empty()){
+                return;
+            }
+
+            msg = encoder_queue_.front();
+            encoder_queue_.pop_front();
         }
+
+        if(msg == nullptr){
+            continue;
+        }
+
+        publishEncoderData(msg);
     }
 }
 
@@ -453,7 +486,6 @@ void MyCarDriver::publishBatteryVoltage(std::shared_ptr<my_serial::Message> msg)
     vol.data = ((msg->data[0] << 8) & 0xff00) | (msg->data[1] & 0x00ff);//将高字节和低字节合并成一个16位的整数,单位为mv
     //发布电压数据
     voltage_pub_->publish(vol);
-    rclcpp::Rate(10).sleep();//10hz
 }
 
 //解析编码器数据并发布
@@ -469,5 +501,4 @@ void MyCarDriver::publishEncoderData(std::shared_ptr<my_serial::Message> msg){//
         encoder_data.data.push_back(((msg->data[i*2] << 8) & 0xff00) | (msg->data[i*2+1] & 0x00ff));
     }
     encoder_pub_->publish(encoder_data);
-    rclcpp::Rate(10).sleep();//10hz
 }
