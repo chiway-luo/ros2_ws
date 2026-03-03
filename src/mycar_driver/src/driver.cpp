@@ -207,7 +207,7 @@ private:
     std::mutex encoder_queue_mutex_; //编码器数据队列互斥锁
     std::condition_variable encoder_queue_cv_; //编码器数据队列条件变量
     std::deque<std::shared_ptr<my_serial::Message>> encoder_queue_; //编码器数据独立队列
-    static constexpr std::size_t max_encoder_queue_size_ = 100; //编码器队列最大容量
+    static constexpr std::size_t max_encoder_queue_size_ = 10; //编码器队列最大容量
     
     //创建电压发布对象 电压单位mv
     rclcpp::Publisher<std_msgs::msg::UInt16>::SharedPtr voltage_pub_;
@@ -414,6 +414,7 @@ void MyCarDriver::getMessage(){
             std::lock_guard<std::mutex> lock(encoder_queue_mutex_);
             if(encoder_queue_.size() >= max_encoder_queue_size_){
                 encoder_queue_.pop_front();//队列满时丢弃最旧数据,保证读取线程不被阻塞
+                // encoder_queue_.clear();//队列满时清空队列,保证读取线程不被阻塞,因为编码器数据的时效性更强,丢弃旧数据比丢弃新数据更合理
             }
             encoder_queue_.push_back(msg);
             encoder_queue_cv_.notify_one();
@@ -502,5 +503,6 @@ void MyCarDriver::publishEncoderData(std::shared_ptr<my_serial::Message> msg){//
         encoder_data.data.push_back(((msg->data[i*2] << 8) & 0xff00) | (msg->data[i*2+1] & 0x00ff));
     }
     encoder_pub_->publish(encoder_data);
+
     rclcpp::Rate(10).sleep();
 }
